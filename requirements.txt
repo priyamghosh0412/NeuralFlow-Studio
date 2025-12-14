@@ -1,0 +1,10 @@
+django
+numpy
+pandas
+tensorflow
+scikit-learn
+pyarrow
+fastparquet
+requests
+scipy
+keras

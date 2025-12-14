@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NAS Framework - Exploratory Data Analysis</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.development.js"></script>
+    <script crossorigin
+        src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.development.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: #f3f4f6;
+        }
+
+        .glass {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .tooltip {
+            position: relative;
+        }
+
+        .tooltip .tooltiptext {
+            visibility: hidden;
+            width: 220px;
+            background-color: #1f2937;
+            color: #fff;
+            text-align: left;
+            border-radius: 8px;
+            padding: 8px 12px;
+            position: absolute;
+            z-index: 50;
+            bottom: 125%;
+            left: 50%;
+            margin-left: -110px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            font-size: 11px;
+            line-height: 1.4;
+        }
+
+        .tooltip:hover .tooltiptext {
+            visibility: visible;
+            opacity: 1;
+        }
+
+        .stat-card {
+            transition: all 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #a8a8a8;
+        }
+    </style>
+</head>
+
+<body class="min-h-screen p-8">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        {% verbatim %}
+        const { useState, useEffect } = React;
+
+        const tooltips = {
+            'memory_usage_mb': 'Total RAM used by the dataset in megabytes',
+            'duplicate_rows': 'Number of completely identical rows',
+            'constant_columns': 'Columns with only one unique value',
+            'skewness': 'Asymmetry: 0=symmetric, >1=right-skewed, <-1=left-skewed',
+            'kurtosis': 'Tail heaviness: >3=heavy tails (more outliers), <3=light tails',
+            'cv': 'Coefficient of Variation (std/mean): measures relative variability',
+            'iqr': 'Interquartile Range (Q3-Q1): middle 50% spread',
+            'outliers_pct': 'Percentage of values outside 1.5×IQR from quartiles',
+            'rare_count': 'Categories appearing in <1% of rows',
+            'imbalance_ratio': 'Ratio of most to least frequent category'
+        };
+
+        function Tooltip({ label, children }) {
+            const tooltip = tooltips[label] || '';
+            return (
+                <div className="tooltip inline-block">
+                    {children}
+                    {tooltip && <span className="tooltiptext">{tooltip}</span>}
+                </div>
+            );
+        }
+
+        function StatCard({ title, value, subtitle, icon, color = 'indigo', tooltip }) {
+            const card = (
+                <div className={`stat-card bg-white rounded-xl shadow-lg p-6 border-t-4 border-${color}-500`}>
+                    <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                            <p className="text-gray-500 text-sm font-medium">{title}</p>
+                            <p className={`text-3xl font-bold text-${color}-600 mt-2`}>{value}</p>
+                            {subtitle && <p className="text-gray-400 text-xs mt-1">{subtitle}</p>}
+                        </div>
+                        {icon && <div className="text-4xl">{icon}</div>}
+                    </div>
+                </div>
+            );
+
+            return tooltip ? <Tooltip label={tooltip}>{card}</Tooltip> : card;
+        }
+
+        function DBConnector({ onConnected }) {
+            const [credentials, setCredentials] = useState({
+                host: 'localhost',
+                port: '5432',
+                database: 'postgres',
+                user: 'postgres',
+                password: ''
+            });
+            const [connecting, setConnecting] = useState(false);
+            const [error, setError] = useState(null);
+
+            const handleChange = (e) => {
+                setCredentials({ ...credentials, [e.target.name]: e.target.value });
+            };
+
+            const handleConnect = async () => {
+                setConnecting(true);
+                setError(null);
+                try {
+                    const res = await fetch('/eda/api/db/connect', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ credentials })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        onConnected(credentials, data.schemas);
+                    } else {
+                        setError(data.error);
+                    }
+                } catch (e) {
+                    setError(e.message);
+                } finally {
+                    setConnecting(false);
+                }
+            };
+
+            return (
+                <div className="max-w-md mx-auto mt-20">
+                    <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-100">
+                        <div className="text-center mb-8">
+                            <div className="bg-indigo-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <span className="text-3xl">🔌</span>
+                            </div>
+                            <h1 className="text-2xl font-bold text-gray-800">Connect to Data Source</h1>
+                            <p className="text-gray-500 text-sm mt-1">Enter your PostgreSQL credentials</p>
+                        </div>
+
+                        {error && (
+                            <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-6 border border-red-100">
+                                {error}
+                            </div>
+                        )}
+
+                        <div className="space-y-4">
+                            <div className="grid grid-cols-3 gap-4">
+                                <div className="col-span-2">
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">Host</label>
+                                    <input
+                                        type="text" name="host" value={credentials.host} onChange={handleChange}
+                                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+                                        placeholder="localhost"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">Port</label>
+                                    <input
+                                        type="text" name="port" value={credentials.port} onChange={handleChange}
+                                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+                                        placeholder="5432"
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">Database Name</label>
+                                <input
+                                    type="text" name="database" value={credentials.database} onChange={handleChange}
+                                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+                                    placeholder="postgres"
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">Username</label>
+                                    <input
+                                        type="text" name="user" value={credentials.user} onChange={handleChange}
+                                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+                                        placeholder="postgres"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">Password</label>
+                                    <input
+                                        type="password" name="password" value={credentials.password} onChange={handleChange}
+                                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+                                        placeholder="••••••"
+                                    />
+                                </div>
+                            </div>
+
+                            <button
+                                onClick={handleConnect}
+                                disabled={connecting}
+                                className="w-full bg-indigo-600 text-white py-3 rounded-lg font-semibold hover:bg-indigo-700 transition-all shadow-lg mt-6 flex justify-center items-center gap-2"
+                            >
+                                {connecting ? (
+                                    <>
+                                        <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                        Connecting...
+                                    </>
+                                ) : 'Connect Database'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        function QueryInterface({ credentials, schemas, onAnalyze }) {
+            const [selectedSchema, setSelectedSchema] = useState(schemas[0] || 'public');
+            const [tables, setTables] = useState([]);
+            const [query, setQuery] = useState('');
+            const [results, setResults] = useState(null);
+            const [loadingTables, setLoadingTables] = useState(false);
+            const [executing, setExecuting] = useState(false);
+            const [loadingAnalysis, setLoadingAnalysis] = useState(false);
+            const [error, setError] = useState(null);
+
+            useEffect(() => {
+                fetchTables(selectedSchema);
+            }, [selectedSchema]);
+
+            const fetchTables = async (schema) => {
+                setLoadingTables(true);
+                try {
+                    const res = await fetch('/eda/api/db/tables', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ credentials, schema })
+                    });
+                    const data = await res.json();
+                    if (data.success) setTables(data.tables);
+                } catch (e) {
+                    console.error(e);
+                } finally {
+                    setLoadingTables(false);
+                }
+            };
+
+            const handleTableClick = (table) => {
+                setQuery(`SELECT * FROM ${selectedSchema}.${table} LIMIT 100;`);
+            };
+
+            const executeQuery = async () => {
+                setExecuting(true);
+                setError(null);
+                try {
+                    const res = await fetch('/eda/api/db/query', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ credentials, query })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        setResults(data);
+                    } else {
+                        setError(data.error);
+                    }
+                } catch (e) {
+                    setError(e.message);
+                } finally {
+                    setExecuting(false);
+                }
+            };
+
+            const handleAnalyze = async () => {
+                setLoadingAnalysis(true);
+                try {
+                    const res = await fetch('/eda/api/db/load', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ credentials, query })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        onAnalyze();
+                    } else {
+                        alert('Analysis failed: ' + data.error);
+                    }
+                } catch (e) {
+                    alert('Error: ' + e.message);
+                } finally {
+                    setLoadingAnalysis(false);
+                }
+            };
+
+            return (
+                <div className="flex h-[calc(100vh-4rem)] bg-white rounded-xl shadow-2xl overflow-hidden border border-gray-200">
+                    {/* Sidebar */}
+                    <div className="w-64 bg-gray-50 border-r border-gray-200 flex flex-col">
+                        <div className="p-4 border-b border-gray-200">
+                            <h2 className="font-bold text-gray-700 flex items-center gap-2">
+                                <span>🗄️</span> Explorer
+                            </h2>
+                        </div>
+                        <div className="p-4">
+                            <label className="block text-xs font-medium text-gray-500 mb-1">Schema</label>
+                            <select
+                                value={selectedSchema}
+                                onChange={(e) => setSelectedSchema(e.target.value)}
+                                className="w-full border rounded px-2 py-1 text-sm mb-4"
+                            >
+                                {schemas.map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
+
+                            <div className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">Tables</div>
+                            <div className="overflow-y-auto flex-1 h-[calc(100vh-16rem)] space-y-1">
+                                {loadingTables ? (
+                                    <div className="text-gray-400 text-sm italic p-2">Loading...</div>
+                                ) : tables.length === 0 ? (
+                                    <div className="text-gray-400 text-sm italic p-2">No tables found</div>
+                                ) : (
+                                    tables.map(t => (
+                                        <div
+                                            key={t}
+                                            onClick={() => handleTableClick(t)}
+                                            className="px-2 py-1.5 hover:bg-indigo-50 hover:text-indigo-600 rounded cursor-pointer text-sm text-gray-600 flex items-center gap-2 transition-colors"
+                                        >
+                                            <span className="opacity-50">📄</span> {t}
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Main Content */}
+                    <div className="flex-1 flex flex-col">
+                        {/* Toolbar */}
+                        <div className="h-14 border-b border-gray-200 flex items-center justify-between px-4 bg-white">
+                            <div className="font-medium text-gray-700">Query Editor</div>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={executeQuery}
+                                    disabled={executing || !query}
+                                    className="bg-green-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 transition-colors flex items-center gap-2"
+                                >
+                                    {executing ? 'Running...' : '▶ Run Query'}
+                                </button>
+                                <button
+                                    onClick={handleAnalyze}
+                                    disabled={loadingAnalysis || !results}
+                                    className="bg-indigo-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors flex items-center gap-2"
+                                >
+                                    {loadingAnalysis ? 'Loading...' : 'Next: Analyze →'}
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Editor */}
+                        <div className="h-1/3 border-b border-gray-200 bg-gray-900 p-4">
+                            <textarea
+                                value={query}
+                                onChange={(e) => setQuery(e.target.value)}
+                                className="w-full h-full bg-transparent text-gray-200 font-mono text-sm outline-none resize-none"
+                                placeholder="SELECT * FROM table_name LIMIT 100;"
+                                spellCheck="false"
+                            />
+                        </div>
+
+                        {/* Results */}
+                        <div className="flex-1 bg-gray-50 overflow-hidden flex flex-col">
+                            {error ? (
+                                <div className="p-8 text-center text-red-600">
+                                    <p className="font-bold mb-2">Query Error</p>
+                                    <p className="text-sm font-mono bg-red-50 p-4 rounded border border-red-200 inline-block">{error}</p>
+                                </div>
+                            ) : results ? (
+                                <div className="flex-1 overflow-auto">
+                                    <table className="w-full text-sm text-left border-collapse">
+                                        <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
+                                            <tr>
+                                                {results.columns.map(c => (
+                                                    <th key={c} className="px-4 py-2 font-semibold text-gray-600 border-b border-gray-200 whitespace-nowrap">{c}</th>
+                                                ))}
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-200 bg-white">
+                                            {results.data.map((row, i) => (
+                                                <tr key={i} className="hover:bg-gray-50">
+                                                    {results.columns.map(c => (
+                                                        <td key={c} className="px-4 py-2 text-gray-600 border-r border-gray-100 last:border-r-0 whitespace-nowrap max-w-xs truncate">
+                                                            {row[c] === null ? <span className="text-gray-300 italic">null</span> : String(row[c])}
+                                                        </td>
+                                                    ))}
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            ) : (
+                                <div className="flex-1 flex items-center justify-center text-gray-400">
+                                    <div className="text-center">
+                                        <div className="text-4xl mb-2">⌨️</div>
+                                        <p>Run a query to see results here</p>
+                                    </div>
+                                </div>
+                            )}
+                            {results && (
+                                <div className="bg-white border-t border-gray-200 px-4 py-2 text-xs text-gray-500 flex justify-between">
+                                    <span>{results.rows} rows returned</span>
+                                    <span>Preview Mode (Max 100 rows)</span>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        function EDAApp() {
+            const [stats, setStats] = useState(null);
+            const [comprehensive, setComprehensive] = useState(null);
+            const [view, setView] = useState('connect'); // 'connect', 'query', 'analyze'
+            const [dbCredentials, setDbCredentials] = useState(null);
+            const [dbSchemas, setDbSchemas] = useState([]);
+
+            const [selectedColumn, setSelectedColumn] = useState(null);
+
+            useEffect(() => {
+                fetchStats();
+            }, []);
+
+            const fetchStats = async () => {
+                try {
+                    const res = await fetch('/eda/api/data_stats');
+                    if (res.ok) {
+                        const data = await res.json();
+                        setStats(data);
+                        setComprehensive(data.comprehensive);
+                        setView('analyze');
+                    }
+                } catch (e) {
+                    console.error("Failed to fetch stats", e);
+                }
+            };
+
+            const handleConnected = (credentials, schemas) => {
+                setDbCredentials(credentials);
+                setDbSchemas(schemas);
+                setView('query');
+            };
+
+            const handleAnalyze = () => {
+                fetchStats();
+            };
+
+            if (view === 'connect') {
+                return <DBConnector onConnected={handleConnected} />;
+            }
+
+            if (view === 'query') {
+                return <QueryInterface credentials={dbCredentials} schemas={dbSchemas} onAnalyze={handleAnalyze} />;
+            }
+
+            if (!stats) return <div className="text-center mt-20">Loading Analysis...</div>;
+
+            const overview = comprehensive?.overview || {};
+            const columns = comprehensive?.columns || {};
+            const missing = comprehensive?.missing || {};
+            const correlations = comprehensive?.correlations || {};
+            const quality = comprehensive?.quality || {};
+
+            return (
+                <div className="max-w-7xl mx-auto">
+                    {/* Header */}
+                    <div className="bg-white rounded-2xl shadow-lg p-6 mb-8 flex justify-between items-center">
+                        <div>
+                            <h1 className="text-3xl font-bold text-gray-800 mb-1">📊 Dataset Analysis</h1>
+                            <p className="text-gray-600">{stats.shape.rows.toLocaleString()} rows × {stats.shape.columns} columns</p>
+                        </div>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setView('connect')}
+                                className="bg-gray-100 text-gray-700 px-6 py-3 rounded-xl font-medium hover:bg-gray-200 transition-all border border-gray-300"
+                            >
+                                New Connection
+                            </button>
+                            <button
+                                onClick={() => window.location.href = '/transformation'}
+                                className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-indigo-700 transition-all shadow-md"
+                            >
+                                Next: Transformation →
+                            </button>
+                            <button
+                                onClick={() => window.location.href = '/logout/'}
+                                className="bg-red-500 text-white px-6 py-3 rounded-xl font-semibold hover:bg-red-600 transition-all shadow-md"
+                            >
+                                Logout
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Overview Stats Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                        <StatCard title="Total Rows" value={overview.total_rows?.toLocaleString()} icon="📋" color="blue" />
+                        <StatCard title="Total Columns" value={overview.total_columns} icon="📊" color="green" />
+                        <StatCard
+                            title="Memory Usage"
+                            value={`${overview.memory_usage_mb?.toFixed(2)} MB`}
+                            icon="💾"
+                            color="purple"
+                            tooltip="memory_usage_mb"
+                        />
+                        <StatCard
+                            title="Duplicate Rows"
+                            value={overview.duplicate_rows}
+                            subtitle={`${overview.duplicate_rows_pct}%`}
+                            icon="🔄"
+                            color={overview.duplicate_rows > 0 ? "orange" : "green"}
+                            tooltip="duplicate_rows"
+                        />
+                        <StatCard
+                            title="Numeric Columns"
+                            value={overview.numeric_count}
+                            subtitle={`${overview.numeric_pct}%`}
+                            icon="🔢"
+                            color="indigo"
+                        />
+                        <StatCard
+                            title="Categorical Columns"
+                            value={overview.categorical_count}
+                            subtitle={`${overview.categorical_pct}%`}
+                            icon="📝"
+                            color="pink"
+                        />
+                        <StatCard
+                            title="Datetime Columns"
+                            value={overview.datetime_count}
+                            subtitle={`${overview.datetime_pct}%`}
+                            icon="📅"
+                            color="cyan"
+                        />
+                        <StatCard
+                            title="Constant Columns"
+                            value={overview.constant_columns}
+                            icon="⚠️"
+                            color={overview.constant_columns > 0 ? "red" : "green"}
+                            tooltip="constant_columns"
+                        />
+                    </div>
+
+                    {/* Missing Data Section */}
+                    <div className="bg-white rounded-2xl shadow-xl p-8 mb-8">
+                        <h2 className="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-3">
+                            <span>🔍</span> Missing Data Analysis
+                        </h2>
+                        <div className="grid grid-cols-3 gap-6">
+                            <div className="text-center p-6 bg-gradient-to-br from-yellow-50 to-yellow-100 rounded-xl">
+                                <p className="text-sm text-yellow-700 font-medium">Rows >50% Missing</p>
+                                <p className="text-4xl font-bold text-yellow-600 mt-2">{missing.rows_50pct_missing}</p>
+                            </div>
+                            <div className="text-center p-6 bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl">
+                                <p className="text-sm text-orange-700 font-medium">Rows >80% Missing</p>
+                                <p className="text-4xl font-bold text-orange-600 mt-2">{missing.rows_80pct_missing}</p>
+                            </div>
+                            <div className="text-center p-6 bg-gradient-to-br from-red-50 to-red-100 rounded-xl">
+                                <p className="text-sm text-red-700 font-medium">Columns >50% Missing</p>
+                                <p className="text-4xl font-bold text-red-600 mt-2">{missing.cols_50pct_missing}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Column Details */}
+                    <div className="bg-white rounded-2xl shadow-xl p-8 mb-8">
+                        <h2 className="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-3">
+                            <span>📋</span> Detailed Column Analysis
+                        </h2>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                                <thead className="bg-gray-50 border-b-2 border-gray-200">
+                                    <tr>
+                                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Column</th>
+                                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Type</th>
+                                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Unique</th>
+                                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Missing %</th>
+                                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Stats</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {Object.values(columns).map((col, idx) => (
+                                        <React.Fragment key={idx}>
+                                            <tr
+                                                className="hover:bg-gray-50 cursor-pointer transition-colors"
+                                                onClick={() => setSelectedColumn(selectedColumn === col.name ? null : col.name)}
+                                            >
+                                                <td className="px-4 py-3 font-medium text-gray-800">{col.name}</td>
+                                                <td className="px-4 py-3">
+                                                    <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium">
+                                                        {col.dtype}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <span className={`px-2 py-1 rounded text-xs font-medium ${col.cardinality === 'Low' ? 'bg-green-100 text-green-700' :
+                                                        col.cardinality === 'Medium' ? 'bg-yellow-100 text-yellow-700' :
+                                                            'bg-red-100 text-red-700'
+                                                        }`}>
+                                                        {col.unique_count} ({col.cardinality})
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <span className={`font-medium ${col.missing_pct > 50 ? 'text-red-600' :
+                                                        col.missing_pct > 20 ? 'text-orange-600' :
+                                                            col.missing_pct > 0 ? 'text-yellow-600' :
+                                                                'text-green-600'
+                                                        }`}>
+                                                        {col.missing_pct?.toFixed(1)}%
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <button className="text-indigo-600 hover:text-indigo-800 text-xs font-semibold">
+                                                        {selectedColumn === col.name ? '▼ Hide' : '▶ View'}
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                            {selectedColumn === col.name && (
+                                                <tr className="bg-gray-50 border-b border-gray-200">
+                                                    <td colSpan="5" className="p-6">
+                                                        <h3 className="text-xl font-bold text-gray-800 mb-4">{col.name}</h3>
+
+                                                        {/* Numeric Stats */}
+                                                        {col.numeric && (
+                                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                                                <div className="bg-white p-3 rounded-lg border border-gray-200">
+                                                                    <p className="text-xs text-gray-500">Mean</p>
+                                                                    <p className="text-lg font-bold text-gray-800">{col.numeric.mean?.toFixed(2)}</p>
+                                                                </div>
+                                                                <div className="bg-white p-3 rounded-lg border border-gray-200">
+                                                                    <p className="text-xs text-gray-500">Median</p>
+                                                                    <p className="text-lg font-bold text-gray-800">{col.numeric.median?.toFixed(2)}</p>
+                                                                </div>
+                                                                <Tooltip label="skewness">
+                                                                    <div className="bg-white p-3 rounded-lg border border-gray-200">
+                                                                        <p className="text-xs text-gray-500">Skewness</p>
+                                                                        <p className="text-lg font-bold text-gray-800">{col.numeric.skewness?.toFixed(2)}</p>
+                                                                    </div>
+                                                                </Tooltip>
+                                                                <Tooltip label="kurtosis">
+                                                                    <div className="bg-white p-3 rounded-lg border border-gray-200">
+                                                                        <p className="text-xs text-gray-500">Kurtosis</p>
+                                                                        <p className="text-lg font-bold text-gray-800">{col.numeric.kurtosis?.toFixed(2)}</p>
+                                                                    </div>
+                                                                </Tooltip>
+                                                                <div className="bg-white p-3 rounded-lg border border-gray-200">
+                                                                    <p className="text-xs text-gray-500">Min / Max</p>
+                                                                    <p className="text-sm font-bold text-gray-800">
+                                                                        {col.numeric.min?.toFixed(2)} / {col.numeric.max?.toFixed(2)}
+                                                                    </p>
+                                                                </div>
+                                                                <div className="bg-white p-3 rounded-lg border border-gray-200">
+                                                                    <p className="text-xs text-gray-500">Std Dev</p>
+                                                                    <p className="text-lg font-bold text-gray-800">{col.numeric.std?.toFixed(2)}</p>
+                                                                </div>
+                                                                <Tooltip label="iqr">
+                                                                    <div className="bg-white p-3 rounded-lg border border-gray-200">
+                                                                        <p className="text-xs text-gray-500">IQR</p>
+                                                                        <p className="text-lg font-bold text-gray-800">{col.numeric.iqr?.toFixed(2)}</p>
+                                                                    </div>
+                                                                </Tooltip>
+                                                                <Tooltip label="outliers_pct">
+                                                                    <div className="bg-white p-3 rounded-lg border border-gray-200">
+                                                                        <p className="text-xs text-gray-500">Outliers</p>
+                                                                        <p className={`text-lg font-bold ${col.numeric.outliers_pct > 5 ? 'text-red-600' : 'text-green-600'}`}>
+                                                                            {col.numeric.outliers_pct?.toFixed(1)}%
+                                                                        </p>
+                                                                    </div>
+                                                                </Tooltip>
+                                                            </div>
+                                                        )}
+
+                                                        {/* Categorical Stats */}
+                                                        {col.categorical && (
+                                                            <div className="space-y-3">
+                                                                <div className="bg-white p-4 rounded-lg border border-gray-200">
+                                                                    <p className="text-sm font-semibold text-gray-700 mb-2">Top Categories</p>
+                                                                    {Object.entries(col.categorical.top_5).map(([val, count]) => (
+                                                                        <div key={val} className="flex justify-between text-sm mb-1">
+                                                                            <span className="text-gray-700 truncate max-w-xs">{val}</span>
+                                                                            <span className="text-indigo-600 font-semibold ml-2">{count} ({col.categorical.top_5_pct[val]}%)</span>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                                <div className="grid grid-cols-3 gap-3">
+                                                                    <Tooltip label="rare_count">
+                                                                        <div className="bg-white p-3 rounded-lg border border-gray-200">
+                                                                            <p className="text-xs text-gray-500">Rare Categories</p>
+                                                                            <p className="text-lg font-bold text-orange-600">{col.categorical.rare_count}</p>
+                                                                        </div>
+                                                                    </Tooltip>
+                                                                    <Tooltip label="imbalance_ratio">
+                                                                        <div className="bg-white p-3 rounded-lg border border-gray-200">
+                                                                            <p className="text-xs text-gray-500">Imbalance Ratio</p>
+                                                                            <p className="text-lg font-bold text-purple-600">{col.categorical.imbalance_ratio}</p>
+                                                                        </div>
+                                                                    </Tooltip>
+                                                                    <div className="bg-white p-3 rounded-lg border border-gray-200">
+                                                                        <p className="text-xs text-gray-500">Dominant Category</p>
+                                                                        <p className={`text-lg font-bold ${col.categorical.dominant_category ? 'text-red-600' : 'text-green-600'}`}>
+                                                                            {col.categorical.dominant_category ? 'Yes' : 'No'}
+                                                                        </p>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {/* Datetime Stats */}
+                                                        {col.datetime && (
+                                                            <div className="grid grid-cols-2 gap-4">
+                                                                <div className="bg-white p-4 rounded-lg border border-gray-200">
+                                                                    <p className="text-xs text-gray-500">Date Range</p>
+                                                                    <p className="text-sm font-semibold text-gray-800">{col.datetime.min_date}</p>
+                                                                    <p className="text-sm font-semibold text-gray-800">to {col.datetime.max_date}</p>
+                                                                    <p className="text-xs text-gray-600 mt-1">{col.datetime.range_days} days</p>
+                                                                </div>
+                                                                <div className="bg-white p-4 rounded-lg border border-gray-200">
+                                                                    <p className="text-xs text-gray-500">Frequency</p>
+                                                                    <p className="text-lg font-bold text-indigo-600">{col.datetime.frequency}</p>
+                                                                    <p className="text-xs text-gray-600 mt-1">Avg gap: {col.datetime.avg_gap_days} days</p>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </React.Fragment>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    {/* Correlations */}
+                    {correlations.high_corr_pairs && correlations.high_corr_pairs.length > 0 && (
+                        <div className="bg-white rounded-2xl shadow-xl p-8 mb-8">
+                            <h2 className="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-3">
+                                <span>🔗</span> High Correlations (>0.8)
+                            </h2>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {correlations.high_corr_pairs.map((pair, idx) => (
+                                    <div key={idx} className="bg-gradient-to-r from-indigo-50 to-purple-50 p-4 rounded-xl border border-indigo-200">
+                                        <div className="flex justify-between items-center">
+                                            <div>
+                                                <p className="font-semibold text-gray-800">{pair.col1} ↔ {pair.col2}</p>
+                                            </div>
+                                            <div className={`px-3 py-1 rounded-full font-bold ${Math.abs(pair.correlation) > 0.95 ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'
+                                                }`}>
+                                                {pair.correlation.toFixed(3)}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Quality Alerts */}
+                    {quality.zero_heavy_cols && quality.zero_heavy_cols.length > 0 && (
+                        <div className="bg-white rounded-2xl shadow-xl p-8">
+                            <h2 className="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-3">
+                                <span>⚠️</span> Quality Alerts
+                            </h2>
+                            <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-r-xl">
+                                <p className="text-sm font-semibold text-yellow-800">Zero-Heavy Columns (>50% zeros)</p>
+                                <p className="text-gray-700 mt-2">{quality.zero_heavy_cols.join(', ')}</p>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<EDAApp />);
+        {% endverbatim %}
+    </script>
+</body>
+
+</html>
