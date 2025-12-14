@@ -1,0 +1,28 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.ipynb
+*.parquet
+
+# ML artifacts
+uploads/
+*.keras
+*.h5
+*.pt
+*.ckpt
+*.pkl
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Local DB
+db.sqlite3
+
+# Virtual env
+venv/
+gan_env/
+
+# OS
+.DS_Store
