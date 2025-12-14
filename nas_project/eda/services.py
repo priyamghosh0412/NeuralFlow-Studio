@@ -20,6 +20,13 @@ def load_state_from_disk():
     """
     pass
 
+def save_state_to_disk():
+    """
+    Deprecated: State persistence disabled per user request.
+    Data is now kept in-memory only for the duration of the server session.
+    """
+    pass
+
 def calculate_eda_stats(df):
     """Calculate comprehensive EDA statistics"""
     # Calculate data quality score (0-100)

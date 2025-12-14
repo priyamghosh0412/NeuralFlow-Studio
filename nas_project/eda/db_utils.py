@@ -46,14 +46,33 @@ def execute_query(credentials, query, preview=True):
     try:
         engine = create_engine(get_connection_string(credentials))
         
-        if preview:
-            # Wrap query to limit results for preview
-            # Note: This is a simple limit, might need more robust parsing for complex queries
-            # but for now we'll just append LIMIT if it's a SELECT
-            if "limit" not in query.lower() and query.strip().lower().startswith("select"):
-                query += " LIMIT 100"
+        # if preview:
+        #     # Wrap query to limit results for preview
+        #     # Note: This is a simple limit, might need more robust parsing for complex queries
+        #     # but for now we'll just append LIMIT if it's a SELECT
+        #     if "limit" not in query.lower() and query.strip().lower().startswith("select"):
+        #         query = query.strip().rstrip(';') + " LIMIT 100"
         
         df = pd.read_sql(query, engine)
+        
+        # Deduplicate columns if necessary
+        if not df.columns.is_unique:
+            cols = list(df.columns)
+            seen = {}
+            for i, col in enumerate(cols):
+                if col not in seen:
+                    seen[col] = 1
+                else:
+                    base_col = col
+                    new_col = f"{base_col}.{seen[base_col]}"
+                    while new_col in seen:
+                        seen[base_col] += 1
+                        new_col = f"{base_col}.{seen[base_col]}"
+                    cols[i] = new_col
+                    seen[new_col] = 1
+                    seen[base_col] += 1
+            df.columns = cols
+            
         return df, None
     except Exception as e:
         return None, str(e)

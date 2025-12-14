@@ -609,15 +609,19 @@ def generate_fallback_suggestions(eda_stats):
 
 
 
-def parse_chat_transformation(user_message, df_info):
+def parse_chat_transformation(user_message, df_info, df_head=None):
     """Parse natural language transformation request and generate checkpoints"""
+    
+    context_str = ""
+    if df_head is not None:
+        context_str += f"\nDATAFRAME HEAD (First 5 rows):\n{df_head}\n"
     
     prompt = f"""You are a data transformation assistant. The user wants to transform their dataset.
 
 Dataset Info:
-- Columns: {', '.join(df_info['columns'][:20])}
+- Columns: {', '.join(df_info['columns'])}
 - Rows: {df_info['rows']}
-
+{context_str}
 User Request: "{user_message}"
 
 Generate a step-by-step transformation plan. Return ONLY a valid JSON object in this EXACT format:
@@ -677,35 +681,41 @@ Return ONLY the JSON object, no other text."""
     }
 
 
-def generate_transformation_code(user_request, available_columns):
+def generate_transformation_code(user_request, available_columns, df_head=None, df_dtypes=None):
     """Generate Python code for transformation using LLM"""
+    
+    context_str = ""
+    if df_head is not None:
+        context_str += f"\nDATAFRAME HEAD (First 5 rows):\n{df_head}\n"
+    
+    if df_dtypes is not None:
+        context_str += f"\nCOLUMN DATA TYPES:\n{df_dtypes}\n"
     
     prompt = f"""You are a Python data transformation expert. Generate ONLY executable Python code based on the user's request.
 
 AVAILABLE COLUMNS IN DATAFRAME:
 {', '.join(available_columns)}
-
+{context_str}
 USER REQUEST:
 "{user_request}"
 
 CRITICAL RULES:
 1. The dataframe is called 'df'
 2. Use ONLY columns from the available columns list above
-3. Generate ONLY the code to create the new column(s)
+3. Generate ONLY the code to create the new column(s) or transform existing ones
 4. Do NOT include any explanations, comments, or markdown
-5. Do NOT include import statements
+5. Do NOT include import statements (pandas is available as pd, numpy as np)
 6. Return ONLY valid Python code that can be executed directly
-7. IMPORTANT: If the user specifies a column name in quotes (like "feature_1_2"), use EXACTLY that name
+7. If the user specifies a column name in quotes (like "feature_1_2"), use EXACTLY that name
 8. If no specific name is given, create a descriptive name based on the operation
+9. You CAN define helper functions if needed, but they must be defined before use
+10. Ensure all code is complete and valid syntax
 
 EXAMPLE INPUT: "create a column called \"feature_1_2\" by multiplying feature_1 and feature_2"
 EXAMPLE OUTPUT: df['feature_1_2'] = df['feature_1'] * df['feature_2']
 
-EXAMPLE INPUT: "create a new column by multiplying feature_1 and feature_2"
-EXAMPLE OUTPUT: df['feature_1_feature_2_product'] = df['feature_1'] * df['feature_2']
-
-EXAMPLE INPUT: "add feature_3 and feature_4 and call it \"total_features\""
-EXAMPLE OUTPUT: df['total_features'] = df['feature_3'] + df['feature_4']
+EXAMPLE INPUT: "extract year from date_column"
+EXAMPLE OUTPUT: df['year'] = pd.to_datetime(df['date_column']).dt.year
 
 Now generate the code for the user's request. Return ONLY the Python code, nothing else:"""
 
@@ -721,14 +731,14 @@ Now generate the code for the user's request. Return ONLY the Python code, nothi
         elif '```' in code:
             code = code.split('```')[1].split('```')[0].strip()
         
-        # Remove any explanatory text (keep only lines that look like code)
+        # Clean up code - remove lines that are clearly not code (like "Here is the code:")
         code_lines = []
         for line in code.split('\n'):
-            line = line.strip()
-            # Keep lines that start with df[ or are assignments
-            if line and (line.startswith('df[') or '=' in line):
-                code_lines.append(line)
-        
+            # Skip lines that look like conversational text
+            if line.strip().lower().startswith(('here is', 'sure', 'certainly', 'i have')):
+                continue
+            code_lines.append(line)
+            
         if code_lines:
             return '\n'.join(code_lines)
     

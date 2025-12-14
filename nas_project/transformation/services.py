@@ -148,8 +148,16 @@ def handle_chat_transform(user_message):
     }
     
     try:
-        result = parse_chat_transformation(user_message, df_info)
-        generated_code = generate_transformation_code(user_message, df.columns.tolist())
+        # Prepare context for code generation
+        # Ensure we don't truncate columns in the string representation if possible, 
+        # but for very wide datasets we might need to be careful. 
+        # User requested "all columns", so we try to show them.
+        df_head = df.head(5).to_string()
+        df_dtypes = df.dtypes.to_string()
+        
+        result = parse_chat_transformation(user_message, df_info, df_head)
+        
+        generated_code = generate_transformation_code(user_message, df.columns.tolist(), df_head, df_dtypes)
         
         if generated_code:
             result['generated_code'] = generated_code
