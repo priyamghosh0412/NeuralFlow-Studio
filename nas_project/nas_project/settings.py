@@ -144,7 +144,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Authentication Settings
 LOGIN_URL = 'login'
-LOGIN_REDIRECT_URL = 'eda_view'
+LOGIN_REDIRECT_URL = 'homepage'
 LOGOUT_REDIRECT_URL = 'login'
 
 # Session Settings

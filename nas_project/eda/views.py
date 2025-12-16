@@ -194,3 +194,26 @@ def db_load(request):
         return JsonResponse({'success': True})
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+def analysis_design_selection_view(request):
+    return render(request, 'eda/analysis_design_selection.html')
+
+def analysis_design_option_view(request, option_id):
+    template_name = f'eda/analysis_option{option_id}.html'
+    return render(request, template_name)
+
+@csrf_exempt
+@login_required
+@require_http_methods(["GET"])
+def generate_insights_view(request):
+    """Generate AI insights for the current dataset."""
+    load_state_from_disk()
+    if eda_state['stats'] is None:
+        return JsonResponse({'error': 'No data loaded'}, status=400)
+    
+    try:
+        from transformation.transformation_helpers import generate_data_insights
+        insights = generate_data_insights(eda_state['stats'])
+        return JsonResponse({'success': True, 'insights': insights})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)

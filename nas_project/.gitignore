@@ -26,3 +26,4 @@ gan_env/
 
 # OS
 .DS_Store
+.vscode/

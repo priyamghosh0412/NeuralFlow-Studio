@@ -7,7 +7,7 @@ from django.contrib.auth.forms import AuthenticationForm
 
 def login_view(request):
     if request.user.is_authenticated:
-        return redirect('eda_view')
+        return redirect('homepage')
         
     if request.method == 'POST':
         form = AuthenticationForm(request, data=request.POST)
@@ -17,7 +17,7 @@ def login_view(request):
             user = authenticate(username=username, password=password)
             if user is not None:
                 login(request, user)
-                return redirect('eda_view')
+                return redirect('homepage')
             else:
                 messages.error(request, "Invalid username or password.")
         else:
@@ -88,3 +88,18 @@ def register_view(request):
         return redirect('login')
         
     return render(request, 'accounts/register.html')
+
+
+@login_required
+def homepage_view(request):
+    return render(request, 'accounts/homepage.html')
+
+
+@login_required
+def about_view(request):
+    return render(request, 'accounts/about.html')
+
+
+@login_required
+def under_construction_view(request):
+    return render(request, 'accounts/under_construction.html')

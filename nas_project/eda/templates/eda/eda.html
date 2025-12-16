@@ -80,7 +80,7 @@
     </style>
 </head>
 
-<body class="min-h-screen p-8">
+<body class="h-screen overflow-hidden bg-gray-100">
     <div id="root"></div>
 
     <script type="text/babel">
@@ -127,6 +127,174 @@
             return tooltip ? <Tooltip label={tooltip}>{card}</Tooltip> : card;
         }
 
+        const ReportView = ({ stats, comprehensive, insights, onBack }) => {
+            const overview = comprehensive?.overview || {};
+            const columns = comprehensive?.columns || {};
+
+            return (
+                <div className="min-h-screen bg-white p-8 font-sans text-[#2d2a26]">
+                    {/* No-print controls */}
+                    <div className="print:hidden flex justify-between items-center mb-8 bg-gray-100 p-4 rounded-xl sticky top-0 z-50 shadow-sm">
+                        <button onClick={onBack} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg font-bold transition-colors">
+                            &larr; Back to Dashboard
+                        </button>
+                        <button onClick={() => window.print()} className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold flex items-center gap-2 transition-colors shadow-lg">
+                            <span>🖨️</span> Print Report
+                        </button>
+                    </div>
+
+                    {/* Report Content */}
+                    <div className="max-w-4xl mx-auto">
+                        <header className="mb-12 border-b-4 border-[#2d2a26] pb-8">
+                            <div className="flex items-center gap-4 mb-4">
+                                <div className="w-16 h-16 rounded-xl overflow-hidden border-2 border-[#2d2a26]">
+                                    <img src="/static/images/app_icon.png" alt="NeuralFlow" className="w-full h-full object-cover" />
+                                </div>
+                                <div>
+                                    <h1 className="text-4xl font-bold">Data Profiling Report</h1>
+                                    <p className="text-gray-600">Generated on {new Date().toLocaleDateString()}</p>
+                                </div>
+                            </div>
+
+                            {/* Summary Stats */}
+                            <div className="grid grid-cols-3 gap-4 mt-8">
+                                <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
+                                    <div className="text-sm text-gray-500 uppercase font-bold">Rows</div>
+                                    <div className="text-2xl font-bold">{stats.shape.rows.toLocaleString()}</div>
+                                </div>
+                                <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
+                                    <div className="text-sm text-gray-500 uppercase font-bold">Columns</div>
+                                    <div className="text-2xl font-bold">{stats.shape.columns}</div>
+                                </div>
+                                <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
+                                    <div className="text-sm text-gray-500 uppercase font-bold">Quality Score</div>
+                                    <div className="text-2xl font-bold">{overview.duplicate_rows === 0 && overview.missing_cells === 0 ? '100%' : '98%'}</div>
+                                </div>
+                            </div>
+                        </header>
+
+                        {/* Insights */}
+                        <section className="mb-12 break-inside-avoid">
+                            <h2 className="text-2xl font-bold mb-4 border-b-2 border-purple-200 inline-block">AI Insights</h2>
+                            <div className="bg-purple-50 p-6 rounded-xl border border-purple-100">
+                                <ul className="space-y-2">
+                                    {insights.map((insight, i) => (
+                                        <li key={i} className="flex gap-2 text-sm">
+                                            <span className="text-purple-600 font-bold">•</span>
+                                            <span dangerouslySetInnerHTML={{ __html: insight.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') }}></span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        </section>
+
+                        {/* Detailed Column Analysis */}
+                        <section>
+                            <h2 className="text-2xl font-bold mb-8 border-b-2 border-yellow-200 inline-block">Column Analysis</h2>
+                            <div className="space-y-8">
+                                {Object.values(columns).map((col, idx) => {
+                                    // Merge stats
+                                    const colStats = { ...col, ...stats.columns[col.name] };
+
+                                    return (
+                                        <div key={idx} className="break-inside-avoid border-2 border-gray-100 rounded-2xl p-6 mb-8 bg-white shadow-sm">
+                                            <div className="flex justify-between items-start mb-6">
+                                                <div className="flex items-center gap-4">
+                                                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-xl ${col.numeric ? 'bg-blue-100 text-blue-600' : 'bg-yellow-100 text-yellow-600'}`}>
+                                                        {col.numeric ? '🔢' : '🏷️'}
+                                                    </div>
+                                                    <div>
+                                                        <h3 className="text-xl font-bold">{col.name}</h3>
+                                                        <span className="text-xs font-bold bg-gray-100 px-2 py-1 rounded uppercase text-gray-500">{col.dtype}</span>
+                                                    </div>
+                                                </div>
+                                                <div className="text-right">
+                                                    <div className="text-sm text-gray-500">Missing</div>
+                                                    <div className="font-bold">{col.missing_pct}%</div>
+                                                </div>
+                                            </div>
+
+                                            {/* Stats Grid */}
+                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                                                {col.numeric ? (
+                                                    <>
+                                                        <div className="p-3 bg-gray-50 rounded-lg">
+                                                            <div className="text-xs text-gray-500">Min</div>
+                                                            <div className="font-bold">{colStats.numeric?.min?.toFixed(2)}</div>
+                                                        </div>
+                                                        <div className="p-3 bg-gray-50 rounded-lg">
+                                                            <div className="text-xs text-gray-500">Max</div>
+                                                            <div className="font-bold">{colStats.numeric?.max?.toFixed(2)}</div>
+                                                        </div>
+                                                        <div className="p-3 bg-gray-50 rounded-lg">
+                                                            <div className="text-xs text-gray-500">Mean</div>
+                                                            <div className="font-bold">{colStats.numeric?.mean?.toFixed(2)}</div>
+                                                        </div>
+                                                        <div className="p-3 bg-gray-50 rounded-lg">
+                                                            <div className="text-xs text-gray-500">Std Dev</div>
+                                                            <div className="font-bold">{colStats.numeric?.std?.toFixed(2)}</div>
+                                                        </div>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <div className="p-3 bg-gray-50 rounded-lg">
+                                                            <div className="text-xs text-gray-500">Unique</div>
+                                                            <div className="font-bold">{col.unique_count}</div>
+                                                        </div>
+                                                        <div className="p-3 bg-gray-50 rounded-lg">
+                                                            <div className="text-xs text-gray-500">Cardinality</div>
+                                                            <div className="font-bold">{col.cardinality}</div>
+                                                        </div>
+                                                    </>
+                                                )}
+                                            </div>
+
+                                            {/* Visualizations */}
+                                            {col.numeric && colStats.histogram && (
+                                                <div className="mt-4">
+                                                    <h4 className="text-sm font-bold mb-2 text-gray-500">Distribution</h4>
+                                                    <div className="h-32 flex items-end gap-0.5">
+                                                        {colStats.histogram.counts.map((count, i) => {
+                                                            const maxCount = Math.max(...colStats.histogram.counts);
+                                                            const heightPct = maxCount > 0 ? (count / maxCount) * 100 : 0;
+                                                            return (
+                                                                <div key={i} className="flex-1 bg-indigo-500 rounded-t-sm" style={{ height: `${heightPct}%` }}></div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                    <div className="flex justify-between mt-1 text-xs text-gray-400">
+                                                        <span>{colStats.histogram.bins[0].toFixed(1)}</span>
+                                                        <span>{colStats.histogram.bins[colStats.histogram.bins.length - 1].toFixed(1)}</span>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {col.categorical && (
+                                                <div className="mt-4">
+                                                    <h4 className="text-sm font-bold mb-2 text-gray-500">Top Values</h4>
+                                                    <div className="space-y-2">
+                                                        {Object.entries(col.categorical.top_5).slice(0, 5).map(([val, count], i) => (
+                                                            <div key={i} className="flex items-center gap-2 text-sm">
+                                                                <span className="w-24 truncate font-medium">{val}</span>
+                                                                <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                                                                    <div className="h-full bg-blue-500" style={{ width: `${col.categorical.top_5_pct[val]}%` }}></div>
+                                                                </div>
+                                                                <span className="text-gray-500 w-12 text-right">{count}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </section>
+                    </div>
+                </div>
+            );
+        };
+
         function DBConnector({ onConnected }) {
             const [credentials, setCredentials] = useState({
                 host: '',
@@ -165,84 +333,119 @@
             };
 
             return (
-                <div className="max-w-md mx-auto mt-20">
-                    <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-100">
-                        <div className="text-center mb-8">
-                            <div className="bg-indigo-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                                <span className="text-3xl">🔌</span>
-                            </div>
-                            <h1 className="text-2xl font-bold text-gray-800">Connect to Data Source</h1>
-                            <p className="text-gray-500 text-sm mt-1">Enter your PostgreSQL credentials</p>
-                        </div>
-
-                        {error && (
-                            <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-6 border border-red-100">
-                                {error}
-                            </div>
-                        )}
-
-                        <div className="space-y-4">
-                            <div className="grid grid-cols-3 gap-4">
-                                <div className="col-span-2">
-                                    <label className="block text-xs font-medium text-gray-700 mb-1">Host</label>
-                                    <input
-                                        type="text" name="host" value={credentials.host} onChange={handleChange}
-                                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
-                                        placeholder="localhost"
-                                    />
+                <div className="h-screen flex overflow-hidden">
+                    {/* Left: Form */}
+                    <div className="w-full lg:w-5/12 bg-white flex flex-col justify-center p-12 shadow-2xl z-10">
+                        <div className="max-w-md mx-auto w-full">
+                            <div className="flex items-center gap-3 mb-8">
+                                <div className="w-12 h-12 rounded-lg flex items-center justify-center overflow-hidden">
+                                    <img src="/static/images/app_icon.png" alt="NeuralFlow Logo" className="w-full h-full object-cover" />
                                 </div>
-                                <div>
-                                    <label className="block text-xs font-medium text-gray-700 mb-1">Port</label>
-                                    <input
-                                        type="text" name="port" value={credentials.port} onChange={handleChange}
-                                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
-                                        placeholder="5432"
-                                    />
+                                <h1 className="text-2xl font-bold text-gray-900">NeuralFlow</h1>
+                            </div>
+
+                            <h2 className="text-3xl font-bold text-gray-900 mb-2">Connect Data Source</h2>
+                            <p className="text-gray-500 mb-8">Enter your PostgreSQL credentials to begin analysis.</p>
+
+                            {error && (
+                                <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-6 border border-red-100">
+                                    {error}
                                 </div>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-medium text-gray-700 mb-1">Database Name</label>
-                                <input
-                                    type="text" name="database" value={credentials.database} onChange={handleChange}
-                                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
-                                    placeholder="postgres"
-                                />
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
+                            )}
+
+                            <div className="space-y-5">
+                                <div className="grid grid-cols-3 gap-4">
+                                    <div className="col-span-2">
+                                        <label className="block text-sm font-semibold text-gray-700 mb-1">Host</label>
+                                        <input
+                                            type="text"
+                                            name="host"
+                                            value={credentials.host}
+                                            onChange={handleChange}
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                                            placeholder="localhost"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-1">Port</label>
+                                        <input
+                                            type="text"
+                                            name="port"
+                                            value={credentials.port}
+                                            onChange={handleChange}
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                                            placeholder="5432"
+                                        />
+                                    </div>
+                                </div>
+
                                 <div>
-                                    <label className="block text-xs font-medium text-gray-700 mb-1">Username</label>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-1">Database Name</label>
                                     <input
-                                        type="text" name="user" value={credentials.user} onChange={handleChange}
-                                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
+                                        type="text"
+                                        name="database"
+                                        value={credentials.database}
+                                        onChange={handleChange}
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
                                         placeholder="postgres"
                                     />
                                 </div>
-                                <div>
-                                    <label className="block text-xs font-medium text-gray-700 mb-1">Password</label>
-                                    <input
-                                        type="password" name="password" value={credentials.password} onChange={handleChange}
-                                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
-                                        placeholder="••••••"
-                                    />
-                                </div>
-                            </div>
 
-                            <button
-                                onClick={handleConnect}
-                                disabled={connecting}
-                                className="w-full bg-indigo-600 text-white py-3 rounded-lg font-semibold hover:bg-indigo-700 transition-all shadow-lg mt-6 flex justify-center items-center gap-2"
-                            >
-                                {connecting ? (
-                                    <>
-                                        <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                        </svg>
-                                        Connecting...
-                                    </>
-                                ) : 'Connect Database'}
-                            </button>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-1">Username</label>
+                                        <input
+                                            type="text"
+                                            name="user"
+                                            value={credentials.user}
+                                            onChange={handleChange}
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                                            placeholder="postgres"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-1">Password</label>
+                                        <input
+                                            type="password"
+                                            name="password"
+                                            value={credentials.password}
+                                            onChange={handleChange}
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                                            placeholder="••••••"
+                                        />
+                                    </div>
+                                </div>
+
+                                <button
+                                    onClick={handleConnect}
+                                    disabled={connecting}
+                                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition-all shadow-md hover:shadow-lg mt-2 flex justify-center items-center gap-2"
+                                >
+                                    {connecting ? (
+                                        <>
+                                            <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                            </svg>
+                                            Connecting...
+                                        </>
+                                    ) : 'Connect Database'}
+                                </button>
+                            </div>
                         </div>
+                    </div>
+
+                    {/* Right: Visual */}
+                    <div className="hidden lg:flex lg:w-7/12 bg-blue-600 items-center justify-center relative overflow-hidden">
+                        <div className="absolute inset-0 bg-gradient-to-br from-blue-600 to-indigo-900 opacity-90"></div>
+                        <div className="relative z-10 text-center text-white p-12">
+                            <img src="/static/images/postgres_elephant.jpg" className="w-64 h-64 mx-auto mb-8 rounded-full shadow-2xl border-4 border-white/20" />
+                            <h3 className="text-4xl font-bold mb-4">Enterprise Grade Security</h3>
+                            <p className="text-blue-100 text-lg max-w-md mx-auto">Connect your data securely with our advanced encryption standards.</p>
+                        </div>
+                        {/* Decorative circles */}
+                        <div className="absolute top-0 right-0 -mr-20 -mt-20 w-96 h-96 bg-white/10 rounded-full blur-3xl"></div>
+                        <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-80 h-80 bg-indigo-500/30 rounded-full blur-3xl"></div>
                     </div>
                 </div>
             );
@@ -283,6 +486,8 @@
             const [error, setError] = useState(null);
             const [page, setPage] = useState(1);
             const [rowsPerPage, setRowsPerPage] = useState(100);
+            const [history, setHistory] = useState([]);
+            const [activeTab, setActiveTab] = useState('results'); // 'results', 'history'
 
             useEffect(() => {
                 fetchTables(selectedSchema);
@@ -322,6 +527,8 @@
                     if (data.success) {
                         setResults(data);
                         setPage(1);
+                        setHistory(prev => [...prev, { query, timestamp: new Date().toLocaleTimeString() }]);
+                        setActiveTab('results');
                     } else {
                         setError(data.error);
                     }
@@ -353,130 +560,273 @@
                 }
             };
 
-            return (
-                <div className="flex h-[calc(100vh-4rem)] bg-white rounded-xl shadow-2xl overflow-hidden border border-gray-200">
-                    {/* Sidebar */}
-                    <div className="w-64 bg-gray-50 border-r border-gray-200 flex flex-col">
-                        <div className="p-4 border-b border-gray-200">
-                            <h2 className="font-bold text-gray-700 flex items-center gap-2">
-                                <span>🗄️</span> Explorer
-                            </h2>
-                        </div>
-                        <div className="p-4">
-                            <label className="block text-xs font-medium text-gray-500 mb-1">Schema</label>
-                            <select
-                                value={selectedSchema}
-                                onChange={(e) => setSelectedSchema(e.target.value)}
-                                className="w-full border rounded px-2 py-1 text-sm mb-4"
-                            >
-                                {schemas.map(s => <option key={s} value={s}>{s}</option>)}
-                            </select>
+            const handleSave = () => {
+                const blob = new Blob([query], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'query.sql';
+                a.click();
+                URL.revokeObjectURL(url);
+            };
 
-                            <div className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">Tables</div>
-                            <div className="overflow-y-auto flex-1 h-[calc(100vh-16rem)] space-y-1">
+            const handleFormat = () => {
+                const keywords = ['SELECT', 'FROM', 'WHERE', 'GROUP BY', 'ORDER BY', 'LIMIT', 'JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'INNER JOIN', 'ON', 'AND', 'OR', 'INSERT INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE'];
+                let formatted = query;
+                keywords.forEach(kw => {
+                    const regex = new RegExp(`\\b${kw}\\b`, 'gi');
+                    formatted = formatted.replace(regex, kw.toUpperCase());
+                });
+                ['FROM', 'WHERE', 'GROUP BY', 'ORDER BY', 'LIMIT'].forEach(kw => {
+                    formatted = formatted.replace(new RegExp(`\\b${kw}\\b`, 'g'), `\n${kw}`);
+                });
+                setQuery(formatted);
+            };
+
+            const handleDownloadCSV = () => {
+                if (!results) return;
+                const headers = results.columns.join(',');
+                const rows = results.data.map(row => results.columns.map(c => {
+                    const val = row[c];
+                    return val === null ? '' : typeof val === 'string' && val.includes(',') ? `"${val}"` : val;
+                }).join(','));
+                const csv = [headers, ...rows].join('\n');
+                const blob = new Blob([csv], { type: 'text/csv' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'results.csv';
+                a.click();
+                URL.revokeObjectURL(url);
+            };
+
+            const handleDownloadJSON = () => {
+                if (!results) return;
+                const json = JSON.stringify(results.data, null, 2);
+                const blob = new Blob([json], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'results.json';
+                a.click();
+                URL.revokeObjectURL(url);
+            };
+
+            return (
+                <div className="h-screen flex flex-col overflow-hidden bg-white text-slate-800">
+                    {/* Top Bar */}
+                    <div className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 shadow-sm z-10">
+                        <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-lg overflow-hidden">
+                                    <img src="/static/images/app_icon.png" alt="NeuralFlow" className="w-full h-full object-cover" />
+                                </div>
+                                <h1 className="text-xl font-bold text-slate-800">Query Editor</h1>
+                            </div>
+                            <div className="h-6 w-px bg-slate-200 mx-2"></div>
+                            <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-full text-sm text-slate-600 border border-slate-200">
+                                <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                                postgres @ localhost
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <button
+                                onClick={handleAnalyze}
+                                disabled={loadingAnalysis || !results}
+                                className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 shadow-sm flex items-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {loadingAnalysis ? 'Loading...' : 'Next: Analyze'}
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="flex-1 flex overflow-hidden">
+                        {/* Sidebar */}
+                        <div className="w-64 bg-slate-50 border-r border-slate-200 flex flex-col">
+                            <div className="p-4 border-b border-slate-200">
+                                <select
+                                    value={selectedSchema}
+                                    onChange={(e) => setSelectedSchema(e.target.value)}
+                                    className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent shadow-sm mb-3"
+                                >
+                                    {schemas.map(s => <option key={s} value={s}>{s}</option>)}
+                                </select>
+                                <div className="relative">
+                                    <svg className="w-4 h-4 absolute left-3 top-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                                    <input type="text" placeholder="Search tables..." className="w-full bg-white border border-slate-200 rounded-lg pl-9 pr-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent shadow-sm" />
+                                </div>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-3 space-y-1">
+                                <div className="text-xs font-bold text-slate-400 uppercase px-2 py-2 tracking-wider">Tables</div>
                                 {loadingTables ? (
-                                    <div className="text-gray-400 text-sm italic p-2">Loading...</div>
+                                    <div className="text-slate-400 text-sm italic px-2">Loading...</div>
                                 ) : tables.length === 0 ? (
-                                    <div className="text-gray-400 text-sm italic p-2">No tables found</div>
+                                    <div className="text-slate-400 text-sm italic px-2">No tables found</div>
                                 ) : (
                                     tables.map(t => (
                                         <div
                                             key={t}
                                             onClick={() => handleTableClick(t)}
-                                            className="px-2 py-1.5 hover:bg-indigo-50 hover:text-indigo-600 rounded cursor-pointer text-sm text-gray-600 flex items-center gap-2 transition-colors"
+                                            className="group flex items-center gap-2 px-2 py-2 text-slate-600 hover:bg-white hover:shadow-sm hover:text-indigo-600 rounded-lg cursor-pointer transition-all"
                                         >
-                                            <span className="opacity-50">📄</span> {t}
+                                            <svg className="w-4 h-4 text-slate-400 group-hover:text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>
+                                            <span className="text-sm font-medium">{t}</span>
                                         </div>
                                     ))
                                 )}
                             </div>
                         </div>
-                    </div>
 
-                    {/* Main Content */}
-                    <div className="flex-1 flex flex-col min-w-0">
-                        <QueryToolbar
-                            onRun={executeQuery}
-                            onAnalyze={handleAnalyze}
-                            executing={executing}
-                            loadingAnalysis={loadingAnalysis}
-                            hasQuery={!!query}
-                            hasResults={!!results}
-                        />
+                        {/* Main Content */}
+                        <div className="flex-1 flex flex-col min-w-0 bg-white">
+                            {/* Tabs */}
 
-                        {/* Editor */}
-                        <div className="h-1/3 border-b border-gray-200 bg-gray-900 p-4 flex-shrink-0">
-                            <textarea
-                                value={query}
-                                onChange={(e) => setQuery(e.target.value)}
-                                className="w-full h-full bg-transparent text-gray-200 font-mono text-sm outline-none resize-none"
-                                placeholder="SELECT * FROM table_name LIMIT 100;"
-                                spellCheck="false"
-                            />
-                        </div>
 
-                        {/* Results */}
-                        <div className="flex-1 bg-gray-50 overflow-hidden flex flex-col min-h-0">
-                            {error ? (
-                                <div className="p-8 text-center text-red-600">
-                                    <p className="font-bold mb-2">Query Error</p>
-                                    <p className="text-sm font-mono bg-red-50 p-4 rounded border border-red-200 inline-block">{error}</p>
+                            {/* Toolbar */}
+                            <div className="h-12 bg-white border-b border-slate-200 flex items-center justify-between px-4">
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={executeQuery}
+                                        disabled={executing}
+                                        className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm hover:shadow disabled:opacity-50"
+                                    >
+                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                        {executing ? 'RUNNING...' : 'RUN QUERY'}
+                                    </button>
+                                    <div className="h-5 w-px bg-slate-200 mx-2"></div>
+                                    <button onClick={handleSave} className="text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors">
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
+                                        Save
+                                    </button>
+                                    <button onClick={handleFormat} className="text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors">
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16m-7 6h7" /></svg>
+                                        Format
+                                    </button>
                                 </div>
-                            ) : results ? (
-                                <div className="flex-1 overflow-auto">
-                                    <table className="w-full text-sm text-left border-collapse">
-                                        <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
-                                            <tr>
-                                                {results.columns.map(c => (
-                                                    <th key={c} className="px-4 py-2 font-semibold text-gray-600 border-b border-gray-200 whitespace-nowrap">{c}</th>
-                                                ))}
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-gray-200 bg-white">
-                                            {results.data.slice((page - 1) * rowsPerPage, page * rowsPerPage).map((row, i) => (
-                                                <tr key={i} className="hover:bg-gray-50">
-                                                    {results.columns.map(c => (
-                                                        <td key={c} className="px-4 py-2 text-gray-600 border-r border-gray-100 last:border-r-0 whitespace-nowrap max-w-xs truncate">
-                                                            {row[c] === null ? <span className="text-gray-300 italic">null</span> : String(row[c])}
-                                                        </td>
-                                                    ))}
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            ) : (
-                                <div className="flex-1 flex items-center justify-center text-gray-400">
-                                    <div className="text-center">
-                                        <div className="text-4xl mb-2">⌨️</div>
-                                        <p>Run a query to see results here</p>
-                                    </div>
-                                </div>
-                            )}
-                            {results && (
-                                <div className="bg-white border-t border-gray-200 px-4 py-2 flex items-center justify-between flex-shrink-0">
-                                    <div className="text-xs text-gray-500">
-                                        Showing {Math.min((page - 1) * rowsPerPage + 1, results.rows)} - {Math.min(page * rowsPerPage, results.rows)} of {results.rows} rows
+                            </div>
+
+                            {/* Editor Area */}
+                            <div className="h-1/2 overflow-auto font-mono text-sm bg-white text-slate-800 relative">
+                                <textarea
+                                    value={query}
+                                    onChange={(e) => setQuery(e.target.value)}
+                                    className="w-full h-full p-6 outline-none resize-none"
+                                    placeholder="SELECT * FROM table_name LIMIT 100;"
+                                    spellCheck="false"
+                                />
+                            </div>
+
+                            {/* Results Pane */}
+                            <div className="flex-1 bg-slate-50 border-t border-slate-200 flex flex-col min-h-0">
+                                <div className="flex items-center justify-between px-4 py-2 bg-white border-b border-slate-200">
+                                    <div className="flex gap-6 text-xs font-semibold">
+                                        <button
+                                            onClick={() => setActiveTab('results')}
+                                            className={`${activeTab === 'results' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-500 hover:text-slate-800'} pb-2 -mb-2.5 transition-colors`}
+                                        >
+                                            Results {results ? `(${results.rows})` : ''}
+                                        </button>
+                                        <button
+                                            onClick={() => setActiveTab('history')}
+                                            className={`${activeTab === 'history' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-500 hover:text-slate-800'} pb-2 -mb-2.5 transition-colors`}
+                                        >
+                                            Query History
+                                        </button>
                                     </div>
                                     <div className="flex gap-2">
-                                        <button
-                                            onClick={() => setPage(p => Math.max(1, p - 1))}
-                                            disabled={page === 1}
-                                            className="px-2 py-1 text-xs border rounded hover:bg-gray-50 disabled:opacity-50"
-                                        >
-                                            Previous
+                                        <button onClick={handleDownloadCSV} className="text-xs text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 px-2 py-1 rounded flex items-center gap-1 transition-colors">
+                                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                                            CSV
                                         </button>
-                                        <span className="text-xs py-1">Page {page} of {Math.ceil(results.rows / rowsPerPage)}</span>
-                                        <button
-                                            onClick={() => setPage(p => Math.min(Math.ceil(results.rows / rowsPerPage), p + 1))}
-                                            disabled={page >= Math.ceil(results.rows / rowsPerPage)}
-                                            className="px-2 py-1 text-xs border rounded hover:bg-gray-50 disabled:opacity-50"
-                                        >
-                                            Next
+                                        <button onClick={handleDownloadJSON} className="text-xs text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 px-2 py-1 rounded flex items-center gap-1 transition-colors">
+                                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
+                                            JSON
                                         </button>
                                     </div>
                                 </div>
-                            )}
+                                <div className="flex-1 overflow-auto p-0 bg-white">
+                                    {activeTab === 'history' ? (
+                                        <div className="p-4 space-y-3">
+                                            {history.length === 0 ? (
+                                                <div className="text-slate-400 text-sm italic">No queries executed yet.</div>
+                                            ) : (
+                                                history.slice().reverse().map((h, i) => (
+                                                    <div key={i} className="bg-slate-50 p-3 rounded-lg border border-slate-200 hover:border-indigo-300 transition-colors group">
+                                                        <div className="flex justify-between items-center mb-1">
+                                                            <span className="text-xs text-slate-400">{h.timestamp}</span>
+                                                            <button
+                                                                onClick={() => setQuery(h.query)}
+                                                                className="text-xs text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity hover:underline"
+                                                            >
+                                                                Copy to Editor
+                                                            </button>
+                                                        </div>
+                                                        <pre className="text-xs font-mono text-slate-700 whitespace-pre-wrap">{h.query}</pre>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+                                    ) : error ? (
+                                        <div className="p-8 text-center text-red-600">
+                                            <p className="font-bold mb-2">Query Error</p>
+                                            <p className="text-sm font-mono bg-red-50 p-4 rounded border border-red-200 inline-block">{error}</p>
+                                        </div>
+                                    ) : results ? (
+                                        <table className="w-full text-sm text-left text-slate-600">
+                                            <thead className="text-xs text-slate-500 uppercase bg-slate-50 sticky top-0 shadow-sm">
+                                                <tr>
+                                                    {results.columns.map(c => (
+                                                        <th key={c} className="px-6 py-3 font-semibold border-b border-slate-200 whitespace-nowrap">{c}</th>
+                                                    ))}
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {results.data.slice((page - 1) * rowsPerPage, page * rowsPerPage).map((row, i) => (
+                                                    <tr key={i} className="hover:bg-slate-50 transition-colors">
+                                                        {results.columns.map(c => (
+                                                            <td key={c} className="px-6 py-3 whitespace-nowrap max-w-xs truncate">
+                                                                {row[c] === null ? <span className="text-slate-300 italic">null</span> : String(row[c])}
+                                                            </td>
+                                                        ))}
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    ) : (
+                                        <div className="flex-1 flex items-center justify-center text-slate-400">
+                                            <div className="text-center">
+                                                <div className="text-4xl mb-2">⌨️</div>
+                                                <p>Run a query to see results here</p>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                                {activeTab === 'results' && results && (
+                                    <div className="bg-white border-t border-slate-200 px-4 py-2 flex items-center justify-between flex-shrink-0">
+                                        <div className="text-xs text-slate-500">
+                                            Showing {Math.min((page - 1) * rowsPerPage + 1, results.rows)} - {Math.min(page * rowsPerPage, results.rows)} of {results.rows} rows
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => setPage(p => Math.max(1, p - 1))}
+                                                disabled={page === 1}
+                                                className="px-2 py-1 text-xs border rounded hover:bg-slate-50 disabled:opacity-50"
+                                            >
+                                                Previous
+                                            </button>
+                                            <span className="text-xs py-1">Page {page} of {Math.ceil(results.rows / rowsPerPage)}</span>
+                                            <button
+                                                onClick={() => setPage(p => Math.min(Math.ceil(results.rows / rowsPerPage), p + 1))}
+                                                disabled={page >= Math.ceil(results.rows / rowsPerPage)}
+                                                className="px-2 py-1 text-xs border rounded hover:bg-slate-50 disabled:opacity-50"
+                                            >
+                                                Next
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -486,11 +836,14 @@
         function EDAApp() {
             const [stats, setStats] = useState(null);
             const [comprehensive, setComprehensive] = useState(null);
-            const [view, setView] = useState('connect'); // 'connect', 'query', 'analyze'
+            const [view, setView] = useState('analyze'); // analyze, connect, query, report
             const [dbCredentials, setDbCredentials] = useState(null);
             const [dbSchemas, setDbSchemas] = useState([]);
 
             const [selectedColumn, setSelectedColumn] = useState(null);
+            const [inspectingColumn, setInspectingColumn] = useState(null);
+            const [insights, setInsights] = useState([]);
+            const [loadingInsights, setLoadingInsights] = useState(false);
 
             useEffect(() => {
                 fetchStats();
@@ -504,9 +857,14 @@
                         setStats(data);
                         setComprehensive(data.comprehensive);
                         setView('analyze');
+                        fetchInsights(); // Fetch insights after stats are loaded
+                    } else {
+                        // If no data is loaded (400), switch to connect view
+                        setView('connect');
                     }
                 } catch (e) {
                     console.error("Failed to fetch stats", e);
+                    setView('connect');
                 }
             };
 
@@ -520,326 +878,422 @@
                 fetchStats();
             };
 
+            const handleGenerateReport = () => {
+                setView('report');
+            };
+
+            const fetchInsights = async () => {
+                setLoadingInsights(true);
+                try {
+                    const response = await fetch('/eda/api/insights');
+                    const data = await response.json();
+                    if (data.success) {
+                        setInsights(data.insights);
+                    }
+                } catch (error) {
+                    console.error('Error fetching insights:', error);
+                } finally {
+                    setLoadingInsights(false);
+                }
+            };
+
+
+
             if (view === 'connect') {
                 return <DBConnector onConnected={handleConnected} />;
             }
 
             if (view === 'query') {
-                return <QueryInterface credentials={dbCredentials} schemas={dbSchemas} onAnalyze={handleAnalyze} />;
+                return (
+                    <div className="h-screen overflow-hidden">
+                        <QueryInterface credentials={dbCredentials} schemas={dbSchemas} onAnalyze={handleAnalyze} />
+                    </div>
+                );
+            }
+
+            if (view === 'report') {
+                return <ReportView stats={stats} comprehensive={comprehensive} insights={insights} onBack={() => setView('analyze')} />;
             }
 
             if (!stats) return <div className="text-center mt-20">Loading Analysis...</div>;
 
             const overview = comprehensive?.overview || {};
             const columns = comprehensive?.columns || {};
-            const missing = comprehensive?.missing || {};
-            const correlations = comprehensive?.correlations || {};
-            const quality = comprehensive?.quality || {};
+
+            // Merge comprehensive column data with basic stats (which has histogram)
+            const activeColumnData = inspectingColumn ? {
+                ...columns[inspectingColumn],
+                ...stats.columns[inspectingColumn]
+            } : null;
 
             return (
-                <div className="max-w-7xl mx-auto">
-                    {/* Header */}
-                    <div className="bg-white rounded-2xl shadow-lg p-6 mb-8 flex justify-between items-center">
-                        <div>
-                            <h1 className="text-3xl font-bold text-gray-800 mb-1">📊 Dataset Analysis</h1>
-                            <p className="text-gray-600">{stats.shape.rows.toLocaleString()} rows × {stats.shape.columns} columns</p>
-                        </div>
-                        <div className="flex gap-3">
-                            <button
-                                onClick={() => setView('connect')}
-                                className="bg-gray-100 text-gray-700 px-6 py-3 rounded-xl font-medium hover:bg-gray-200 transition-all border border-gray-300"
-                            >
-                                New Connection
-                            </button>
-                            <button
-                                onClick={() => window.location.href = '/transformation'}
-                                className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-indigo-700 transition-all shadow-md"
-                            >
-                                Next: Transformation →
-                            </button>
-                            <button
-                                onClick={() => window.location.href = '/logout/'}
-                                className="bg-red-500 text-white px-6 py-3 rounded-xl font-semibold hover:bg-red-600 transition-all shadow-md"
-                            >
-                                Logout
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Overview Stats Grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                        <StatCard title="Total Rows" value={overview.total_rows?.toLocaleString()} icon="📋" color="blue" />
-                        <StatCard title="Total Columns" value={overview.total_columns} icon="📊" color="green" />
-                        <StatCard
-                            title="Memory Usage"
-                            value={`${overview.memory_usage_mb?.toFixed(2)} MB`}
-                            icon="💾"
-                            color="purple"
-                            tooltip="memory_usage_mb"
-                        />
-                        <StatCard
-                            title="Duplicate Rows"
-                            value={overview.duplicate_rows}
-                            subtitle={`${overview.duplicate_rows_pct}%`}
-                            icon="🔄"
-                            color={overview.duplicate_rows > 0 ? "orange" : "green"}
-                            tooltip="duplicate_rows"
-                        />
-                        <StatCard
-                            title="Numeric Columns"
-                            value={overview.numeric_count}
-                            subtitle={`${overview.numeric_pct}%`}
-                            icon="🔢"
-                            color="indigo"
-                        />
-                        <StatCard
-                            title="Categorical Columns"
-                            value={overview.categorical_count}
-                            subtitle={`${overview.categorical_pct}%`}
-                            icon="📝"
-                            color="pink"
-                        />
-                        <StatCard
-                            title="Datetime Columns"
-                            value={overview.datetime_count}
-                            subtitle={`${overview.datetime_pct}%`}
-                            icon="📅"
-                            color="cyan"
-                        />
-                        <StatCard
-                            title="Constant Columns"
-                            value={overview.constant_columns}
-                            icon="⚠️"
-                            color={overview.constant_columns > 0 ? "red" : "green"}
-                            tooltip="constant_columns"
-                        />
-                    </div>
-
-                    {/* Missing Data Section */}
-                    <div className="bg-white rounded-2xl shadow-xl p-8 mb-8">
-                        <h2 className="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-3">
-                            <span>🔍</span> Missing Data Analysis
-                        </h2>
-                        <div className="grid grid-cols-3 gap-6">
-                            <div className="text-center p-6 bg-gradient-to-br from-yellow-50 to-yellow-100 rounded-xl">
-                                <p className="text-sm text-yellow-700 font-medium">Rows >50% Missing</p>
-                                <p className="text-4xl font-bold text-yellow-600 mt-2">{missing.rows_50pct_missing}</p>
+                <div className="h-screen overflow-auto p-8 bg-[#fdfbf7] text-[#2d2a26] font-sans">
+                    <div className="max-w-7xl mx-auto relative">
+                        {/* Header */}
+                        <header className="flex justify-between items-end mb-12">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 rounded-xl overflow-hidden shadow-[4px_4px_0px_#2d2a26] border-2 border-[#2d2a26]">
+                                    <img src="/static/images/app_icon.png" alt="NeuralFlow" className="w-full h-full object-cover" />
+                                </div>
+                                <div>
+                                    <h1 className="text-5xl font-bold mb-1">Data Profiling</h1>
+                                    <p className="text-xl text-gray-600 font-medium">Exploration Session #{Math.floor(Math.random() * 100)}</p>
+                                </div>
                             </div>
-                            <div className="text-center p-6 bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl">
-                                <p className="text-sm text-orange-700 font-medium">Rows >80% Missing</p>
-                                <p className="text-4xl font-bold text-orange-600 mt-2">{missing.rows_80pct_missing}</p>
+                            <div className="flex gap-4">
+                                <button onClick={() => setView('connect')} className="px-6 py-3 rounded-xl font-bold border-2 border-gray-900 hover:bg-yellow-100 transition-colors">
+                                    + New Source
+                                </button>
+                                <button onClick={() => window.location.href = '/transformation'} className="px-6 py-3 rounded-xl font-bold bg-indigo-600 text-white border-2 border-gray-900 hover:bg-indigo-700 transition-colors shadow-[4px_4px_0px_rgba(0,0,0,0.2)]">
+                                    Start Transformation -&gt;
+                                </button>
                             </div>
-                            <div className="text-center p-6 bg-gradient-to-br from-red-50 to-red-100 rounded-xl">
-                                <p className="text-sm text-red-700 font-medium">Columns >50% Missing</p>
-                                <p className="text-4xl font-bold text-red-600 mt-2">{missing.cols_50pct_missing}</p>
+                        </header>
+
+                        {/* Big Stats */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
+                            <div className="bg-blue-50 border-2 border-[#2d2a26] rounded-2xl p-8 shadow-[4px_4px_0px_#2d2a26] hover:-translate-y-0.5 hover:shadow-[6px_6px_0px_#2d2a26] transition-all">
+                                <div className="flex justify-between items-start mb-4">
+                                    <span className="text-4xl">📚</span>
+                                    <span className="px-3 py-1 rounded-full bg-white text-xs uppercase font-bold border-[1.5px] border-[#2d2a26]">Dataset Size</span>
+                                </div>
+                                <div className="text-5xl font-bold mb-2">{stats.shape.rows.toLocaleString()}</div>
+                                <div className="text-lg font-medium text-gray-600">Total Rows</div>
+                            </div>
+                            <div className="bg-green-50 border-2 border-[#2d2a26] rounded-2xl p-8 shadow-[4px_4px_0px_#2d2a26] hover:-translate-y-0.5 hover:shadow-[6px_6px_0px_#2d2a26] transition-all">
+                                <div className="flex justify-between items-start mb-4">
+                                    <span className="text-4xl">🧬</span>
+                                    <span className="px-3 py-1 rounded-full bg-white text-xs uppercase font-bold border-[1.5px] border-[#2d2a26]">Structure</span>
+                                </div>
+                                <div className="text-5xl font-bold mb-2">{stats.shape.columns}</div>
+                                <div className="text-lg font-medium text-gray-600">Columns</div>
+                            </div>
+                            <div className="bg-pink-50 border-2 border-[#2d2a26] rounded-2xl p-8 shadow-[4px_4px_0px_#2d2a26] hover:-translate-y-0.5 hover:shadow-[6px_6px_0px_#2d2a26] transition-all">
+                                <div className="flex justify-between items-start mb-4">
+                                    <span className="text-4xl">✨</span>
+                                    <span className="px-3 py-1 rounded-full bg-white text-xs uppercase font-bold border-[1.5px] border-[#2d2a26]">Quality</span>
+                                </div>
+                                <div className="text-5xl font-bold mb-2">
+                                    {(() => {
+                                        const totalCells = stats.shape.rows * stats.shape.columns;
+                                        const missingCells = overview.missing_cells || 0;
+                                        const duplicateRows = overview.duplicate_rows || 0;
+
+                                        // Penalize for missing data and duplicates
+                                        const missingPenalty = (missingCells / totalCells) * 100;
+                                        const duplicatePenalty = (duplicateRows / stats.shape.rows) * 100;
+
+                                        // Calculate score (max 100, min 0)
+                                        const score = Math.max(0, 100 - (missingPenalty + duplicatePenalty));
+                                        return Math.round(score) + '%';
+                                    })()}
+                                </div>
+                                <div className="flex items-center gap-2 text-lg font-medium text-gray-600 relative group">
+                                    Data Health
+                                    <div className="cursor-help text-gray-400 hover:text-gray-600 transition-colors">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <circle cx="12" cy="12" r="10"></circle>
+                                            <line x1="12" y1="16" x2="12" y2="12"></line>
+                                            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                                        </svg>
+                                    </div>
+                                    {/* Tooltip */}
+                                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-xl">
+                                        <p className="font-bold mb-1">Health Score Formula:</p>
+                                        <p>100 - (% Missing Cells + % Duplicate Rows)</p>
+                                        <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                    </div>
 
-                    {/* Column Details */}
-                    <div className="bg-white rounded-2xl shadow-xl p-8 mb-8">
-                        <h2 className="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-3">
-                            <span>📋</span> Detailed Column Analysis
-                        </h2>
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                                <thead className="bg-gray-50 border-b-2 border-gray-200">
-                                    <tr>
-                                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Column</th>
-                                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Type</th>
-                                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Unique</th>
-                                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Missing %</th>
-                                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Stats</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-100">
-                                    {Object.values(columns).map((col, idx) => (
-                                        <React.Fragment key={idx}>
-                                            <tr
-                                                className="hover:bg-gray-50 cursor-pointer transition-colors"
-                                                onClick={() => setSelectedColumn(selectedColumn === col.name ? null : col.name)}
-                                            >
-                                                <td className="px-4 py-3 font-medium text-gray-800">{col.name}</td>
-                                                <td className="px-4 py-3">
-                                                    <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium">
-                                                        {col.dtype}
-                                                    </span>
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    <span className={`px-2 py-1 rounded text-xs font-medium ${col.cardinality === 'Low' ? 'bg-green-100 text-green-700' :
-                                                        col.cardinality === 'Medium' ? 'bg-yellow-100 text-yellow-700' :
-                                                            'bg-red-100 text-red-700'
-                                                        }`}>
-                                                        {col.unique_count} ({col.cardinality})
-                                                    </span>
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    <span className={`font-medium ${col.missing_pct > 50 ? 'text-red-600' :
-                                                        col.missing_pct > 20 ? 'text-orange-600' :
-                                                            col.missing_pct > 0 ? 'text-yellow-600' :
-                                                                'text-green-600'
-                                                        }`}>
-                                                        {col.missing_pct?.toFixed(1)}%
-                                                    </span>
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    <button className="text-indigo-600 hover:text-indigo-800 text-xs font-semibold">
-                                                        {selectedColumn === col.name ? '▼ Hide' : '▶ View'}
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                            {selectedColumn === col.name && (
-                                                <tr className="bg-gray-50 border-b border-gray-200">
-                                                    <td colSpan="5" className="p-6">
-                                                        <h3 className="text-xl font-bold text-gray-800 mb-4">{col.name}</h3>
+                        {/* Main Workspace */}
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
 
-                                                        {/* Numeric Stats */}
-                                                        {col.numeric && (
-                                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                                                <div className="bg-white p-3 rounded-lg border border-gray-200">
-                                                                    <p className="text-xs text-gray-500">Mean</p>
-                                                                    <p className="text-lg font-bold text-gray-800">{col.numeric.mean?.toFixed(2)}</p>
-                                                                </div>
-                                                                <div className="bg-white p-3 rounded-lg border border-gray-200">
-                                                                    <p className="text-xs text-gray-500">Median</p>
-                                                                    <p className="text-lg font-bold text-gray-800">{col.numeric.median?.toFixed(2)}</p>
-                                                                </div>
-                                                                <Tooltip label="skewness">
-                                                                    <div className="bg-white p-3 rounded-lg border border-gray-200">
-                                                                        <p className="text-xs text-gray-500">Skewness</p>
-                                                                        <p className="text-lg font-bold text-gray-800">{col.numeric.skewness?.toFixed(2)}</p>
-                                                                    </div>
-                                                                </Tooltip>
-                                                                <Tooltip label="kurtosis">
-                                                                    <div className="bg-white p-3 rounded-lg border border-gray-200">
-                                                                        <p className="text-xs text-gray-500">Kurtosis</p>
-                                                                        <p className="text-lg font-bold text-gray-800">{col.numeric.kurtosis?.toFixed(2)}</p>
-                                                                    </div>
-                                                                </Tooltip>
-                                                                <div className="bg-white p-3 rounded-lg border border-gray-200">
-                                                                    <p className="text-xs text-gray-500">Min / Max</p>
-                                                                    <p className="text-sm font-bold text-gray-800">
-                                                                        {col.numeric.min?.toFixed(2)} / {col.numeric.max?.toFixed(2)}
-                                                                    </p>
-                                                                </div>
-                                                                <div className="bg-white p-3 rounded-lg border border-gray-200">
-                                                                    <p className="text-xs text-gray-500">Std Dev</p>
-                                                                    <p className="text-lg font-bold text-gray-800">{col.numeric.std?.toFixed(2)}</p>
-                                                                </div>
-                                                                <Tooltip label="iqr">
-                                                                    <div className="bg-white p-3 rounded-lg border border-gray-200">
-                                                                        <p className="text-xs text-gray-500">IQR</p>
-                                                                        <p className="text-lg font-bold text-gray-800">{col.numeric.iqr?.toFixed(2)}</p>
-                                                                    </div>
-                                                                </Tooltip>
-                                                                <Tooltip label="outliers_pct">
-                                                                    <div className="bg-white p-3 rounded-lg border border-gray-200">
-                                                                        <p className="text-xs text-gray-500">Outliers</p>
-                                                                        <p className={`text-lg font-bold ${col.numeric.outliers_pct > 5 ? 'text-red-600' : 'text-green-600'}`}>
-                                                                            {col.numeric.outliers_pct?.toFixed(1)}%
-                                                                        </p>
-                                                                    </div>
-                                                                </Tooltip>
-                                                            </div>
-                                                        )}
+                            {/* Column Deck */}
+                            <div className="lg:col-span-2 space-y-6">
+                                <h2 className="text-2xl font-bold border-b-4 border-yellow-300 inline-block pr-4">Column Deck</h2>
 
-                                                        {/* Categorical Stats */}
-                                                        {col.categorical && (
-                                                            <div className="space-y-3">
-                                                                <div className="bg-white p-4 rounded-lg border border-gray-200">
-                                                                    <p className="text-sm font-semibold text-gray-700 mb-2">Top Categories</p>
-                                                                    {Object.entries(col.categorical.top_5).map(([val, count]) => (
-                                                                        <div key={val} className="flex justify-between text-sm mb-1">
-                                                                            <span className="text-gray-700 truncate max-w-xs">{val}</span>
-                                                                            <span className="text-indigo-600 font-semibold ml-2">{count} ({col.categorical.top_5_pct[val]}%)</span>
-                                                                        </div>
-                                                                    ))}
-                                                                </div>
-                                                                <div className="grid grid-cols-3 gap-3">
-                                                                    <Tooltip label="rare_count">
-                                                                        <div className="bg-white p-3 rounded-lg border border-gray-200">
-                                                                            <p className="text-xs text-gray-500">Rare Categories</p>
-                                                                            <p className="text-lg font-bold text-orange-600">{col.categorical.rare_count}</p>
-                                                                        </div>
-                                                                    </Tooltip>
-                                                                    <Tooltip label="imbalance_ratio">
-                                                                        <div className="bg-white p-3 rounded-lg border border-gray-200">
-                                                                            <p className="text-xs text-gray-500">Imbalance Ratio</p>
-                                                                            <p className="text-lg font-bold text-purple-600">{col.categorical.imbalance_ratio}</p>
-                                                                        </div>
-                                                                    </Tooltip>
-                                                                    <div className="bg-white p-3 rounded-lg border border-gray-200">
-                                                                        <p className="text-xs text-gray-500">Dominant Category</p>
-                                                                        <p className={`text-lg font-bold ${col.categorical.dominant_category ? 'text-red-600' : 'text-green-600'}`}>
-                                                                            {col.categorical.dominant_category ? 'Yes' : 'No'}
-                                                                        </p>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        )}
-
-                                                        {/* Datetime Stats */}
-                                                        {col.datetime && (
-                                                            <div className="grid grid-cols-2 gap-4">
-                                                                <div className="bg-white p-4 rounded-lg border border-gray-200">
-                                                                    <p className="text-xs text-gray-500">Date Range</p>
-                                                                    <p className="text-sm font-semibold text-gray-800">{col.datetime.min_date}</p>
-                                                                    <p className="text-sm font-semibold text-gray-800">to {col.datetime.max_date}</p>
-                                                                    <p className="text-xs text-gray-600 mt-1">{col.datetime.range_days} days</p>
-                                                                </div>
-                                                                <div className="bg-white p-4 rounded-lg border border-gray-200">
-                                                                    <p className="text-xs text-gray-500">Frequency</p>
-                                                                    <p className="text-lg font-bold text-indigo-600">{col.datetime.frequency}</p>
-                                                                    <p className="text-xs text-gray-600 mt-1">Avg gap: {col.datetime.avg_gap_days} days</p>
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                    </td>
-                                                </tr>
-                                            )}
-                                        </React.Fragment>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    {/* Correlations */}
-                    {correlations.high_corr_pairs && correlations.high_corr_pairs.length > 0 && (
-                        <div className="bg-white rounded-2xl shadow-xl p-8 mb-8">
-                            <h2 className="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-3">
-                                <span>🔗</span> High Correlations (>0.8)
-                            </h2>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {correlations.high_corr_pairs.map((pair, idx) => (
-                                    <div key={idx} className="bg-gradient-to-r from-indigo-50 to-purple-50 p-4 rounded-xl border border-indigo-200">
-                                        <div className="flex justify-between items-center">
+                                {Object.values(columns).map((col, idx) => (
+                                    <div key={idx} onClick={() => setInspectingColumn(col.name)} className={`bg-white border-2 border-[#2d2a26] rounded-2xl p-6 flex items-center justify-between group cursor-pointer shadow-[4px_4px_0px_#2d2a26] hover:-translate-y-0.5 hover:shadow-[6px_6px_0px_#2d2a26] transition-all ${idx % 3 === 0 ? 'hover:bg-blue-50' : idx % 3 === 1 ? 'hover:bg-purple-50' : 'hover:bg-yellow-50'}`}>
+                                        <div className="flex items-center gap-6">
+                                            <div className={`w-12 h-12 rounded-xl border-2 flex items-center justify-center text-2xl ${idx % 3 === 0 ? 'bg-blue-100 border-blue-200' : idx % 3 === 1 ? 'bg-purple-100 border-purple-200' : 'bg-yellow-100 border-yellow-200'}`}>
+                                                {col.numeric ? '🔢' : col.datetime ? '📅' : '🏷️'}
+                                            </div>
                                             <div>
-                                                <p className="font-semibold text-gray-800">{pair.col1} ↔ {pair.col2}</p>
+                                                <h3 className={`text-xl font-bold transition-colors ${idx % 3 === 0 ? 'group-hover:text-blue-600' : idx % 3 === 1 ? 'group-hover:text-purple-600' : 'group-hover:text-yellow-600'}`}>{col.name}</h3>
+                                                <div className="flex gap-2 mt-1">
+                                                    <span className="border-[1.5px] border-[#2d2a26] px-2 py-0.5 rounded text-xs font-bold bg-gray-100">{col.dtype}</span>
+                                                    {!col.numeric && (
+                                                        <span className="border-[1.5px] border-[#2d2a26] px-2 py-0.5 rounded text-xs font-bold bg-white">{col.unique_count} Unique</span>
+                                                    )}
+                                                </div>
                                             </div>
-                                            <div className={`px-3 py-1 rounded-full font-bold ${Math.abs(pair.correlation) > 0.95 ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'
-                                                }`}>
-                                                {pair.correlation.toFixed(3)}
-                                            </div>
+                                        </div>
+                                        <div>
+                                            <button className="bg-[#2d2a26] text-white border-2 border-[#2d2a26] px-4 py-2 rounded-lg text-sm font-bold opacity-0 group-hover:opacity-100 transition-opacity shadow-[2px_2px_0px_rgba(0,0,0,0.2)] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none">Inspect</button>
                                         </div>
                                     </div>
                                 ))}
                             </div>
-                        </div>
-                    )}
 
-                    {/* Quality Alerts */}
-                    {quality.zero_heavy_cols && quality.zero_heavy_cols.length > 0 && (
-                        <div className="bg-white rounded-2xl shadow-xl p-8">
-                            <h2 className="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-3">
-                                <span>⚠️</span> Quality Alerts
-                            </h2>
-                            <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-r-xl">
-                                <p className="text-sm font-semibold text-yellow-800">Zero-Heavy Columns (>50% zeros)</p>
-                                <p className="text-gray-700 mt-2">{quality.zero_heavy_cols.join(', ')}</p>
+                            {/* Intelligence & Actions Panel */}
+                            <div className="space-y-8">
+
+                                {/* Quick Insights */}
+                                <div className="space-y-4">
+                                    <h2 className="text-2xl font-bold border-b-4 border-purple-300 inline-block pr-4">Quick Insights</h2>
+                                    <div className="bg-purple-50 border-2 border-[#2d2a26] rounded-2xl p-6 shadow-[4px_4px_0px_#2d2a26]">
+                                        <div className="flex items-center gap-2 mb-4 text-purple-700 font-bold">
+                                            <span className="text-xl">🤖</span> AI Analysis
+                                            {loadingInsights && <span className="text-xs text-gray-500 font-normal ml-2 animate-pulse">Generating...</span>}
+                                        </div>
+                                        <ul className="space-y-3">
+                                            {insights.length > 0 ? insights.map((insight, i) => (
+                                                <li key={i} className="flex gap-3 text-sm leading-relaxed">
+                                                    <span className="text-purple-500 font-bold">•</span>
+                                                    <span dangerouslySetInnerHTML={{ __html: insight.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') }}></span>
+                                                </li>
+                                            )) : (
+                                                !loadingInsights && <li className="text-sm text-gray-500 italic">No insights generated yet.</li>
+                                            )}
+                                        </ul>
+                                    </div>
+                                </div>
+
+                                {/* Alerts Section */}
+                                {comprehensive?.alerts && comprehensive.alerts.length > 0 && (
+                                    <div className="space-y-4">
+                                        <h2 className="text-2xl font-bold border-b-4 border-red-300 inline-block pr-4">Data Alerts</h2>
+                                        <div className="space-y-3">
+                                            {comprehensive.alerts.map((alert, i) => (
+                                                <div key={i} className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-lg shadow-sm">
+                                                    <div className="flex items-start gap-3">
+                                                        <span className="text-2xl">⚠️</span>
+                                                        <div>
+                                                            <p className="font-bold text-red-800">{alert.column}</p>
+                                                            <p className="text-sm text-red-700">{alert.message}</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Quick Actions */}
+                                <div className="space-y-4">
+                                    <h2 className="text-2xl font-bold border-b-4 border-pink-300 inline-block pr-4">Actions</h2>
+                                    <div className="bg-[#2d2a26] text-white border-2 border-[#2d2a26] rounded-2xl p-6 shadow-[4px_4px_0px_#2d2a26]">
+                                        <div className="space-y-3">
+                                            <button onClick={handleGenerateReport} className="w-full py-3 px-4 rounded-xl bg-gray-800 hover:bg-gray-700 border border-gray-700 flex items-center gap-3 transition-colors group">
+                                                <span className="group-hover:scale-110 transition-transform">📊</span> Generate Report
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
                             </div>
                         </div>
+                    </div>
+
+                    {/* Drawer Overlay */}
+                    {inspectingColumn && (
+                        <div className="fixed inset-0 bg-[#2d2a26]/50 backdrop-blur-sm z-40" onClick={() => setInspectingColumn(null)}></div>
                     )}
+
+                    {/* Interactive Inspect Drawer */}
+                    <div className={`fixed top-0 right-0 h-full w-[480px] bg-white border-l-4 border-[#2d2a26] shadow-2xl z-50 p-8 overflow-y-auto transform transition-transform duration-300 ease-in-out ${inspectingColumn ? 'translate-x-0' : 'translate-x-full'}`}>
+                        {activeColumnData && (
+                            <>
+                                <div className="flex justify-between items-center mb-8">
+                                    <h2 className="text-3xl font-bold">{activeColumnData.name}</h2>
+                                    <button onClick={() => setInspectingColumn(null)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                                    </button>
+                                </div>
+
+                                <div className="space-y-8">
+                                    {/* Stats Grid */}
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="p-4 bg-gray-50 rounded-xl border-2 border-gray-100">
+                                            <p className="text-sm text-gray-500 uppercase font-bold mb-1">Type</p>
+                                            <p className="text-xl font-bold text-blue-600">{activeColumnData.dtype}</p>
+                                        </div>
+
+                                        {!activeColumnData.numeric && (
+                                            <>
+                                                <div className="p-4 bg-gray-50 rounded-xl border-2 border-gray-100">
+                                                    <p className="text-sm text-gray-500 uppercase font-bold mb-1">Unique</p>
+                                                    <p className="text-xl font-bold text-green-600">{activeColumnData.unique_count}</p>
+                                                </div>
+                                                <div className="p-4 bg-gray-50 rounded-xl border-2 border-gray-100">
+                                                    <p className="text-sm text-gray-500 uppercase font-bold mb-1">Cardinality</p>
+                                                    <p className="text-xl font-bold text-purple-600">{activeColumnData.cardinality}</p>
+                                                </div>
+                                            </>
+                                        )}
+
+                                        <div className="p-4 bg-gray-50 rounded-xl border-2 border-gray-100">
+                                            <p className="text-sm text-gray-500 uppercase font-bold mb-1">Missing</p>
+                                            <p className="text-xl font-bold text-gray-800">{activeColumnData.missing_pct}%</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Histogram for Numeric */}
+                                    {activeColumnData.numeric && activeColumnData.histogram && (
+                                        <div className="bg-white border-2 border-[#2d2a26] rounded-2xl p-6 shadow-[4px_4px_0px_#2d2a26]">
+                                            <h3 className="text-lg font-bold mb-4">Distribution</h3>
+                                            <div className="h-40 flex items-end gap-1">
+                                                {activeColumnData.histogram.counts.map((count, i) => {
+                                                    const maxCount = Math.max(...activeColumnData.histogram.counts);
+                                                    const heightPct = maxCount > 0 ? (count / maxCount) * 100 : 0;
+                                                    return (
+                                                        <div key={i} className="flex-1 bg-indigo-500 hover:bg-indigo-600 transition-colors rounded-t-sm relative group" style={{ height: `${heightPct}%` }}>
+                                                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 bg-black text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
+                                                                {activeColumnData.histogram.bins[i].toFixed(1)} - {activeColumnData.histogram.bins[i + 1].toFixed(1)}: {count}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                            <div className="flex justify-between mt-2 text-xs text-gray-500 font-medium">
+                                                <span>{activeColumnData.histogram.bins[0].toFixed(1)}</span>
+                                                <span>{activeColumnData.histogram.bins[activeColumnData.histogram.bins.length - 1].toFixed(1)}</span>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Top Values (Categorical) */}
+                                    {activeColumnData.categorical && (
+                                        <div className="bg-white border-2 border-[#2d2a26] rounded-2xl p-6 shadow-[4px_4px_0px_#2d2a26]">
+                                            <h3 className="text-lg font-bold mb-4">Top Values</h3>
+                                            <div className="space-y-3">
+                                                {Object.entries(activeColumnData.categorical.top_5).map(([val, count], i) => (
+                                                    <div key={i} className="flex justify-between items-center">
+                                                        <span className="font-medium truncate max-w-[150px]">{val}</span>
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-24 h-2 bg-gray-100 rounded-full overflow-hidden">
+                                                                <div className="h-full bg-blue-500" style={{ width: `${activeColumnData.categorical.top_5_pct[val]}%` }}></div>
+                                                            </div>
+                                                            <span className="text-sm text-gray-500">{count}</span>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Numeric Stats */}
+                                    {activeColumnData.numeric && (
+                                        <div className="bg-yellow-50 border-2 border-[#2d2a26] rounded-2xl p-6 shadow-[4px_4px_0px_#2d2a26]">
+                                            <h3 className="text-lg font-bold mb-4">Statistics</h3>
+                                            <div className="space-y-2 text-sm">
+                                                <div className="grid grid-cols-2 gap-4 mb-4">
+                                                    <div>
+                                                        <p className="text-gray-500 text-xs uppercase font-bold">Min</p>
+                                                        <p className="font-mono font-bold">{activeColumnData.numeric.min?.toFixed(2)}</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-gray-500 text-xs uppercase font-bold">Max</p>
+                                                        <p className="font-mono font-bold">{activeColumnData.numeric.max?.toFixed(2)}</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-gray-500 text-xs uppercase font-bold">Mean</p>
+                                                        <p className="font-mono font-bold">{activeColumnData.numeric.mean?.toFixed(2)}</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-gray-500 text-xs uppercase font-bold">Median</p>
+                                                        <p className="font-mono font-bold">{activeColumnData.numeric.median?.toFixed(2)}</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-gray-500 text-xs uppercase font-bold">Std Dev</p>
+                                                        <p className="font-mono font-bold">{activeColumnData.numeric.std?.toFixed(2)}</p>
+                                                    </div>
+                                                </div>
+
+                                                <div className="border-t border-yellow-200 pt-2">
+                                                    <p className="text-xs font-bold text-gray-500 mb-2 uppercase">Percentiles</p>
+                                                    <div className="flex justify-between text-xs">
+                                                        <div className="text-center">
+                                                            <p className="text-gray-500">P50</p>
+                                                            <p className="font-mono font-bold">{activeColumnData.numeric.percentiles?.p50?.toFixed(2)}</p>
+                                                        </div>
+                                                        <div className="text-center">
+                                                            <p className="text-gray-500">P75</p>
+                                                            <p className="font-mono font-bold">{activeColumnData.numeric.percentiles?.p75?.toFixed(2)}</p>
+                                                        </div>
+                                                        <div className="text-center">
+                                                            <p className="text-gray-500">P95</p>
+                                                            <p className="font-mono font-bold">{activeColumnData.numeric.percentiles?.p95?.toFixed(2)}</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="border-t border-yellow-200 pt-2 mt-2">
+                                                    <p className="text-xs font-bold text-gray-500 mb-2 uppercase">Sanity Checks</p>
+                                                    <div className="flex justify-between text-xs">
+                                                        <span>Zero Values:</span>
+                                                        <span className={activeColumnData.numeric.zeros_pct > 0 ? "text-orange-600 font-bold" : "text-green-600 font-bold"}>
+                                                            {activeColumnData.numeric.zeros_pct}%
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex justify-between text-xs">
+                                                        <span>Negative Values:</span>
+                                                        <span className={activeColumnData.numeric.negative_pct > 0 ? "text-red-600 font-bold" : "text-green-600 font-bold"}>
+                                                            {activeColumnData.numeric.negative_pct}%
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Datetime Stats */}
+                                    {activeColumnData.datetime && (
+                                        <div className="bg-blue-50 border-2 border-[#2d2a26] rounded-2xl p-6 shadow-[4px_4px_0px_#2d2a26]">
+                                            <h3 className="text-lg font-bold mb-4">Time Analysis</h3>
+                                            <div className="space-y-4 text-sm">
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <p className="text-gray-500 text-xs uppercase font-bold">Start</p>
+                                                        <p className="font-mono font-bold text-xs">{activeColumnData.datetime.min_date}</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-gray-500 text-xs uppercase font-bold">End</p>
+                                                        <p className="font-mono font-bold text-xs">{activeColumnData.datetime.max_date}</p>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex justify-between border-b border-blue-200 pb-2">
+                                                    <span className="text-gray-600">Granularity</span>
+                                                    <span className="font-bold">{activeColumnData.datetime.frequency}</span>
+                                                </div>
+                                                <div className="flex justify-between border-b border-blue-200 pb-2">
+                                                    <span className="text-gray-600">Missing Dates</span>
+                                                    <span className="font-bold">{activeColumnData.missing_pct}%</span>
+                                                </div>
+
+                                                {activeColumnData.datetime.peak_activity && (
+                                                    <div className="pt-2">
+                                                        <p className="text-xs font-bold text-gray-500 mb-2 uppercase">Activity Extremes</p>
+                                                        <div className="flex justify-between text-xs mb-1">
+                                                            <span className="text-green-700 font-bold">Peak:</span>
+                                                            <span>{activeColumnData.datetime.peak_activity.date} ({activeColumnData.datetime.peak_activity.count})</span>
+                                                        </div>
+                                                        <div className="flex justify-between text-xs">
+                                                            <span className="text-red-700 font-bold">Low:</span>
+                                                            <span>{activeColumnData.datetime.low_activity.date} ({activeColumnData.datetime.low_activity.count})</span>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </>
+                        )}
+                    </div>
                 </div>
             );
         }

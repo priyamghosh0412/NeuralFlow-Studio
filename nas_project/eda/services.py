@@ -173,7 +173,9 @@ def calculate_comprehensive_stats(df):
                     'iqr': float(IQR),
                     'cv': float(non_null.std() / non_null.mean()) if non_null.mean() != 0 else 0,
                     'zeros_count': int((non_null == 0).sum()),
-                    'zeros_pct': round((non_null == 0).sum() / len(non_null) * 100, 2)
+                    'zeros_pct': round((non_null == 0).sum() / len(non_null) * 100, 2),
+                    'negative_count': int((non_null < 0).sum()),
+                    'negative_pct': round((non_null < 0).sum() / len(non_null) * 100, 2)
                 }
                 
                 # Outliers (IQR method)
@@ -229,6 +231,18 @@ def calculate_comprehensive_stats(df):
                             col_data['datetime']['frequency'] = f'{int(mode_diff)} days'
                         
                         col_data['datetime']['avg_gap_days'] = round(diffs.mean(), 2)
+                
+                # Peak and Low activity
+                date_counts = non_null.dt.date.value_counts()
+                if not date_counts.empty:
+                    col_data['datetime']['peak_activity'] = {
+                        'date': str(date_counts.idxmax()),
+                        'count': int(date_counts.max())
+                    }
+                    col_data['datetime']['low_activity'] = {
+                        'date': str(date_counts.idxmin()),
+                        'count': int(date_counts.min())
+                    }
         
         comp_stats['columns'][col] = col_data
     
@@ -277,6 +291,36 @@ def calculate_comprehensive_stats(df):
         'zero_heavy_cols': zero_heavy_cols,
         'zero_heavy_count': len(zero_heavy_cols)
     }
+    
+    # 6. Alerts / Insights
+    alerts = []
+    
+    for col in df.columns:
+        # High Cardinality
+        if df[col].nunique() > 50 and df[col].dtype == 'object':
+             alerts.append({
+                'type': 'high_cardinality',
+                'column': col,
+                'message': f"High cardinality detected ({df[col].nunique()} unique values). May increase model complexity."
+            })
+            
+        # ID-Like Column
+        if df[col].nunique() == len(df) and df[col].dtype != 'float64':
+             alerts.append({
+                'type': 'id_like',
+                'column': col,
+                'message': f"ID-like column detected (100% unique). Likely unsuitable for prediction."
+            })
+            
+        # Near-Unique Feature
+        elif df[col].nunique() / len(df) > 0.95 and df[col].dtype != 'float64':
+             alerts.append({
+                'type': 'near_unique',
+                'column': col,
+                'message': f"Near-unique feature (>95% unique). Low generalization value."
+            })
+            
+    comp_stats['alerts'] = alerts
     
     return comp_stats
 

@@ -5,13 +5,13 @@ import requests
 import json
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler, MaxAbsScaler, Normalizer, LabelEncoder, OrdinalEncoder, PowerTransformer, QuantileTransformer
 from scipy import stats
+from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler, MaxAbsScaler, Normalizer, LabelEncoder, OrdinalEncoder, PowerTransformer, QuantileTransformer
 import traceback
 
 # Ollama Configuration
 OLLAMA_API_URL = "http://localhost:11434/api/generate"
-OLLAMA_MODEL = "qwen2.5:3b"
+OLLAMA_MODEL = "codellama:7b"  # Optimized for code generation tasks
 
 
 def call_ollama(prompt, model=OLLAMA_MODEL):
@@ -36,349 +36,43 @@ def call_ollama(prompt, model=OLLAMA_MODEL):
         return None
 
 
-def parse_chat_transformation(user_message, df_info):
-    """Parse natural language transformation request and generate checkpoints"""
+def generate_data_insights(eda_stats):
+    """Generate deterministic insights based on EDA statistics"""
+    insights = []
     
-    prompt = f"""You are a data transformation assistant. The user wants to transform their dataset.
-
-Dataset Info:
-- Columns: {', '.join(df_info['columns'][:20])}
-- Rows: {df_info['rows']}
-
-User Request: "{user_message}"
-
-Generate a step-by-step transformation plan. Return ONLY a valid JSON object in this EXACT format:
-{{
-  "understanding": "Brief summary of what user wants",
-  "checkpoints": [
-    {{
-      "id": "step_1",
-      "description": "Detailed step description",
-      "action": "specific_action_to_take",
-      "status": "pending"
-    }}
-  ],
-  "code_preview": "# Python code snippet"
-}}
-
-Return ONLY the JSON object, no other text."""
-
-    response = call_ollama(prompt)
+    # 1. Dataset Shape
+    rows = eda_stats['shape']['rows']
+    cols = eda_stats['shape']['columns']
+    insights.append(f"The dataset consists of **{rows:,} rows** and **{cols} columns**.")
     
-    if response:
-        try:
-            start_idx = response.find('{')
-            end_idx = response.rfind('}') + 1
-            if start_idx != -1 and end_idx > start_idx:
-                json_str = response[start_idx:end_idx]
-                result = json.loads(json_str)
-                return result
-        except json.JSONDecodeError:
-            pass
-    
-    # Fallback
-    return {
-        "understanding": f"Process request: {user_message}",
-        "checkpoints": [
-            {
-                "id": "step_1",
-                "description": "Analyze the request and identify affected columns",
-                "action": "analyze",
-                "status": "pending"
-            },
-            {
-                "id": "step_2",
-                "description": "Apply the transformation",
-                "action": "transform",
-                "status": "pending"
-            },
-            {
-                "id": "step_3",
-                "description": "Validate the results",
-                "action": "validate",
-                "status": "pending"
-            }
-        ],
-        "code_preview": "# Transformation will be applied based on your request"
-    }
-
-
-def generate_transformation_code(user_request, available_columns):
-    """Generate Python code for transformation using LLM"""
-    
-    prompt = f"""You are a Python data transformation expert. Generate ONLY executable Python code based on the user's request.
-
-AVAILABLE COLUMNS IN DATAFRAME:
-{', '.join(available_columns)}
-
-USER REQUEST:
-"{user_request}"
-
-CRITICAL RULES:
-1. The dataframe is called 'df'
-2. Use ONLY columns from the available columns list above
-3. Generate ONLY the code to create the new column(s)
-4. Do NOT include any explanations, comments, or markdown
-5. Do NOT include import statements
-6. Return ONLY valid Python code that can be executed directly
-7. If creating a new column, use descriptive names
-
-EXAMPLE INPUT: "create a new column by multiplying feature_1 and feature_2"
-EXAMPLE OUTPUT: df['feature_1_feature_2_product'] = df['feature_1'] * df['feature_2']
-
-EXAMPLE INPUT: "add feature_3 and feature_4"
-EXAMPLE OUTPUT: df['feature_3_feature_4_sum'] = df['feature_3'] + df['feature_4']
-
-Now generate the code for the user's request. Return ONLY the Python code, nothing else:"""
-
-    response = call_ollama(prompt)
-    
-    if response:
-        # Extract code from response (remove any markdown formatting)
-        code = response.strip()
+    # 2. Missing Values
+    missing_cols = [col for col, stats in eda_stats['columns'].items() if stats['missing_pct'] > 0]
+    if missing_cols:
+        highest_missing = sorted(missing_cols, key=lambda x: eda_stats['columns'][x]['missing_pct'], reverse=True)[0]
+        pct = eda_stats['columns'][highest_missing]['missing_pct']
+        insights.append(f"**{len(missing_cols)} columns** contain missing values. **{highest_missing}** has the most ({pct:.1f}%).")
+    else:
+        insights.append("Data quality is excellent with **no missing values** detected.")
         
-        # Remove markdown code blocks if present
-        if '```python' in code:
-            code = code.split('```python')[1].split('```')[0].strip()
-        elif '```' in code:
-            code = code.split('```')[1].split('```')[0].strip()
+    # 3. Duplicates
+    duplicates = eda_stats.get('duplicate_rows', 0)
+    if duplicates > 0:
+        insights.append(f"Found **{duplicates:,} duplicate rows** ({duplicates/rows*100:.1f}%) that may need cleaning.")
+    else:
+        insights.append("The dataset is free of **duplicate rows**.")
         
-        # Remove any explanatory text (keep only lines that look like code)
-        code_lines = []
-        for line in code.split('\n'):
-            line = line.strip()
-            # Keep lines that start with df[ or are assignments
-            if line and (line.startswith('df[') or '=' in line):
-                code_lines.append(line)
-        
-        if code_lines:
-            return '\n'.join(code_lines)
+    # 4. Data Types Distribution
+    types = [stats['type'] for stats in eda_stats['columns'].values()]
+    numeric_count = types.count('numerical')
+    categorical_count = types.count('categorical')
+    insights.append(f"Feature mix: **{numeric_count} numerical** and **{categorical_count} categorical** variables.")
     
-    return None
-
-
-def apply_transformation(df, transformation_type, params):
-    """Apply a specific transformation to the dataframe"""
-    df_copy = df.copy()
+    # 5. High Cardinality or Constant Columns
+    constant_cols = [col for col, stats in eda_stats['columns'].items() if stats['unique_count'] == 1]
+    if constant_cols:
+        insights.append(f"**{len(constant_cols)} constant columns** detected (e.g., {constant_cols[0]}) which provide no information.")
     
-    try:
-        affected_cols = params.get('affected_columns', [])
-        
-        # --- Missing Values ---
-        if transformation_type == "fillna_mean":
-            for col in affected_cols:
-                if col in df_copy.columns and pd.api.types.is_numeric_dtype(df_copy[col]):
-                    df_copy[col] = df_copy[col].fillna(df_copy[col].mean())
-                    
-        elif transformation_type == "fillna_median":
-            for col in affected_cols:
-                if col in df_copy.columns and pd.api.types.is_numeric_dtype(df_copy[col]):
-                    df_copy[col] = df_copy[col].fillna(df_copy[col].median())
-                    
-        elif transformation_type == "fillna_mode":
-            for col in affected_cols:
-                if col in df_copy.columns:
-                    mode_val = df_copy[col].mode()
-                    if not mode_val.empty:
-                        df_copy[col] = df_copy[col].fillna(mode_val[0])
-                        
-        elif transformation_type == "fillna_ffill":
-            for col in affected_cols:
-                if col in df_copy.columns:
-                    df_copy[col] = df_copy[col].ffill()
-                    
-        elif transformation_type == "fillna_bfill":
-            for col in affected_cols:
-                if col in df_copy.columns:
-                    df_copy[col] = df_copy[col].bfill()
-                    
-        elif transformation_type == "dropna_rows":
-            if affected_cols:
-                df_copy = df_copy.dropna(subset=affected_cols)
-            else:
-                df_copy = df_copy.dropna()
-                
-        # --- Duplicates ---
-        elif transformation_type == "drop_duplicates_all":
-            df_copy = df_copy.drop_duplicates(keep='first')
-            
-        elif transformation_type == "drop_duplicates_subset":
-            if affected_cols:
-                df_copy = df_copy.drop_duplicates(subset=affected_cols, keep='first')
-                
-        # --- Outliers ---
-        elif transformation_type == "remove_outliers_iqr":
-            multiplier = float(params.get('multiplier', 1.5))
-            for col in affected_cols:
-                if col in df_copy.columns and pd.api.types.is_numeric_dtype(df_copy[col]):
-                    Q1 = df_copy[col].quantile(0.25)
-                    Q3 = df_copy[col].quantile(0.75)
-                    IQR = Q3 - Q1
-                    df_copy = df_copy[(df_copy[col] >= Q1 - multiplier * IQR) & (df_copy[col] <= Q3 + multiplier * IQR)]
-                    
-        elif transformation_type == "remove_outliers_zscore":
-            threshold = float(params.get('threshold', 3.0))
-            for col in affected_cols:
-                if col in df_copy.columns and pd.api.types.is_numeric_dtype(df_copy[col]):
-                    z_scores = np.abs(stats.zscore(df_copy[col].dropna()))
-                    df_copy = df_copy[z_scores < threshold]
-                    
-        elif transformation_type == "clip_outliers":
-            lower = float(params.get('lower', 0.01))
-            upper = float(params.get('upper', 0.99))
-            for col in affected_cols:
-                if col in df_copy.columns and pd.api.types.is_numeric_dtype(df_copy[col]):
-                    lower_bound = df_copy[col].quantile(lower)
-                    upper_bound = df_copy[col].quantile(upper)
-                    df_copy[col] = df_copy[col].clip(lower=lower_bound, upper=upper_bound)
-                    
-        elif transformation_type == "winsorize_outliers":
-            limits = float(params.get('limits', 0.05))
-            for col in affected_cols:
-                if col in df_copy.columns and pd.api.types.is_numeric_dtype(df_copy[col]):
-                    df_copy[col] = stats.mstats.winsorize(df_copy[col], limits=[limits, limits])
-
-        # --- Scaling ---
-        elif transformation_type == "standard_scaler":
-            scaler = StandardScaler()
-            valid_cols = [c for c in affected_cols if c in df_copy.columns and pd.api.types.is_numeric_dtype(df_copy[c])]
-            if valid_cols:
-                df_copy[valid_cols] = scaler.fit_transform(df_copy[valid_cols])
-                
-        elif transformation_type == "minmax_scaler":
-            scaler = MinMaxScaler()
-            valid_cols = [c for c in affected_cols if c in df_copy.columns and pd.api.types.is_numeric_dtype(df_copy[c])]
-            if valid_cols:
-                df_copy[valid_cols] = scaler.fit_transform(df_copy[valid_cols])
-                
-        elif transformation_type == "robust_scaler":
-            scaler = RobustScaler()
-            valid_cols = [c for c in affected_cols if c in df_copy.columns and pd.api.types.is_numeric_dtype(df_copy[c])]
-            if valid_cols:
-                df_copy[valid_cols] = scaler.fit_transform(df_copy[valid_cols])
-                
-        elif transformation_type == "maxabs_scaler":
-            scaler = MaxAbsScaler()
-            valid_cols = [c for c in affected_cols if c in df_copy.columns and pd.api.types.is_numeric_dtype(df_copy[c])]
-            if valid_cols:
-                df_copy[valid_cols] = scaler.fit_transform(df_copy[valid_cols])
-                
-        elif transformation_type == "unit_vector_scaler":
-            scaler = Normalizer()
-            valid_cols = [c for c in affected_cols if c in df_copy.columns and pd.api.types.is_numeric_dtype(df_copy[c])]
-            if valid_cols:
-                df_copy[valid_cols] = scaler.fit_transform(df_copy[valid_cols])
-
-        # --- Distribution ---
-        elif transformation_type == "log_transform":
-            for col in affected_cols:
-                if col in df_copy.columns and pd.api.types.is_numeric_dtype(df_copy[col]):
-                    # Ensure positive values
-                    if (df_copy[col] <= 0).any():
-                        # Shift to positive
-                        min_val = df_copy[col].min()
-                        df_copy[col] = np.log1p(df_copy[col] - min_val + 1)
-                    else:
-                        df_copy[col] = np.log1p(df_copy[col])
-                        
-        elif transformation_type == "sqrt_transform":
-            for col in affected_cols:
-                if col in df_copy.columns and pd.api.types.is_numeric_dtype(df_copy[col]):
-                    # Ensure non-negative
-                    if (df_copy[col] < 0).any():
-                        min_val = df_copy[col].min()
-                        df_copy[col] = np.sqrt(df_copy[col] - min_val)
-                    else:
-                        df_copy[col] = np.sqrt(df_copy[col])
-                        
-        elif transformation_type == "boxcox_transform":
-            for col in affected_cols:
-                if col in df_copy.columns and pd.api.types.is_numeric_dtype(df_copy[col]):
-                    # Box-Cox requires positive data
-                    if (df_copy[col] <= 0).any():
-                        min_val = df_copy[col].min()
-                        data_shifted = df_copy[col] - min_val + 1
-                        df_copy[col], _ = stats.boxcox(data_shifted)
-                    else:
-                        df_copy[col], _ = stats.boxcox(df_copy[col])
-                        
-        elif transformation_type == "yeojohnson_transform":
-            pt = PowerTransformer(method='yeo-johnson')
-            valid_cols = [c for c in affected_cols if c in df_copy.columns and pd.api.types.is_numeric_dtype(df_copy[c])]
-            if valid_cols:
-                df_copy[valid_cols] = pt.fit_transform(df_copy[valid_cols])
-                
-        elif transformation_type == "quantile_transform":
-            output_dist = params.get('output_distribution', 'normal')
-            qt = QuantileTransformer(output_distribution=output_dist)
-            valid_cols = [c for c in affected_cols if c in df_copy.columns and pd.api.types.is_numeric_dtype(df_copy[c])]
-            if valid_cols:
-                df_copy[valid_cols] = qt.fit_transform(df_copy[valid_cols])
-                
-        elif transformation_type == "reciprocal_transform":
-            for col in affected_cols:
-                if col in df_copy.columns and pd.api.types.is_numeric_dtype(df_copy[col]):
-                    # Avoid division by zero
-                    df_copy[col] = 1 / (df_copy[col] + 1e-6)
-
-        # --- Encoding ---
-        elif transformation_type == "label_encoder":
-            le = LabelEncoder()
-            for col in affected_cols:
-                if col in df_copy.columns:
-                    # Convert to string first to handle mixed types
-                    df_copy[col] = le.fit_transform(df_copy[col].astype(str))
-                    
-        elif transformation_type == "onehot_encoder":
-            valid_cols = [c for c in affected_cols if c in df_copy.columns]
-            if valid_cols:
-                df_copy = pd.get_dummies(df_copy, columns=valid_cols, drop_first=True)
-                
-        elif transformation_type == "ordinal_encoder":
-            oe = OrdinalEncoder()
-            valid_cols = [c for c in affected_cols if c in df_copy.columns]
-            if valid_cols:
-                # Ensure string type
-                for col in valid_cols:
-                    df_copy[col] = df_copy[col].astype(str)
-                df_copy[valid_cols] = oe.fit_transform(df_copy[valid_cols])
-        
-        return df_copy, True, "Transformation applied successfully"
-    
-    except Exception as e:
-        print(f"Transformation error: {str(e)}")
-        traceback.print_exc()
-        return df, False, f"Error: {str(e)}"
-import requests
-import json
-import pandas as pd
-import numpy as np
-
-# Ollama Configuration
-OLLAMA_API_URL = "http://localhost:11434/api/generate"
-OLLAMA_MODEL = "qwen2.5:3b"  # Upgraded to 3B for better reasoning
-
-
-def call_ollama(prompt, model=OLLAMA_MODEL):
-    """Call Ollama API with a prompt"""
-    try:
-        response = requests.post(
-            OLLAMA_API_URL,
-            json={
-                "model": model,
-                "prompt": prompt,
-                "stream": False
-            },
-            timeout=60
-        )
-        
-        if response.status_code == 200:
-            return response.json().get('response', '')
-        else:
-            return None
-    except Exception as e:
-        print(f"Ollama API error: {e}")
-        return None
+    return insights
 
 
 def generate_transformation_suggestions(eda_stats):
@@ -481,8 +175,6 @@ Generate 5-6 DIVERSE, NON-REDUNDANT suggestions. Return ONLY the JSON array."""
     
     # Fallback: Generate comprehensive suggestions
     return generate_fallback_suggestions(eda_stats)
-
-
 
 
 def generate_fallback_suggestions(eda_stats):
@@ -606,7 +298,6 @@ def generate_fallback_suggestions(eda_stats):
         })
     
     return suggestions
-
 
 
 def parse_chat_transformation(user_message, df_info, df_head=None):
@@ -800,8 +491,8 @@ def apply_transformation(df, transformation_type, params):
                     if std_val != 0:
                         df_copy[col] = (df_copy[col] - mean_val) / std_val
                     else:
-                        df_copy[col] = 0.0
-                    
+                        df_copy[col] = 0
+                        
         elif transformation_type == "minmax_scaler":
             for col in affected_cols:
                 if col in df_copy.columns and pd.api.types.is_numeric_dtype(df_copy[col]):
@@ -810,122 +501,135 @@ def apply_transformation(df, transformation_type, params):
                     if max_val != min_val:
                         df_copy[col] = (df_copy[col] - min_val) / (max_val - min_val)
                     else:
-                        df_copy[col] = 0.0
-                    
+                        df_copy[col] = 0
+                        
         elif transformation_type == "robust_scaler":
-            for col in affected_cols:
-                if col in df_copy.columns and pd.api.types.is_numeric_dtype(df_copy[col]):
-                    q1 = df_copy[col].quantile(0.25)
-                    q3 = df_copy[col].quantile(0.75)
-                    median_val = df_copy[col].median()
-                    iqr = q3 - q1
-                    if iqr != 0:
-                        df_copy[col] = (df_copy[col] - median_val) / iqr
-                    else:
-                        df_copy[col] = 0.0
-                    
+            scaler = RobustScaler()
+            valid_cols = [c for c in affected_cols if c in df_copy.columns and pd.api.types.is_numeric_dtype(df_copy[c])]
+            if valid_cols:
+                df_copy[valid_cols] = scaler.fit_transform(df_copy[valid_cols])
+                
         elif transformation_type == "maxabs_scaler":
+            scaler = MaxAbsScaler()
+            valid_cols = [c for c in affected_cols if c in df_copy.columns and pd.api.types.is_numeric_dtype(df_copy[c])]
+            if valid_cols:
+                df_copy[valid_cols] = scaler.fit_transform(df_copy[valid_cols])
+                
+        elif transformation_type == "unit_vector_scaler":
+            scaler = Normalizer()
+            valid_cols = [c for c in affected_cols if c in df_copy.columns and pd.api.types.is_numeric_dtype(df_copy[c])]
+            if valid_cols:
+                df_copy[valid_cols] = scaler.fit_transform(df_copy[valid_cols])
+
+        # --- Distribution ---
+        elif transformation_type == "log_transform":
             for col in affected_cols:
                 if col in df_copy.columns and pd.api.types.is_numeric_dtype(df_copy[col]):
-                    max_abs = df_copy[col].abs().max()
-                    if max_abs != 0:
-                        df_copy[col] = df_copy[col] / max_abs
+                    # Ensure positive values
+                    if (df_copy[col] <= 0).any():
+                        # Shift to positive
+                        min_val = df_copy[col].min()
+                        df_copy[col] = np.log1p(df_copy[col] - min_val + 1)
                     else:
-                        df_copy[col] = 0.0
+                        df_copy[col] = np.log1p(df_copy[col])
+                        
+        elif transformation_type == "sqrt_transform":
+            for col in affected_cols:
+                if col in df_copy.columns and pd.api.types.is_numeric_dtype(df_copy[col]):
+                    # Ensure non-negative
+                    if (df_copy[col] < 0).any():
+                        min_val = df_copy[col].min()
+                        df_copy[col] = np.sqrt(df_copy[col] - min_val)
+                    else:
+                        df_copy[col] = np.sqrt(df_copy[col])
+                        
+        elif transformation_type == "boxcox_transform":
+            for col in affected_cols:
+                if col in df_copy.columns and pd.api.types.is_numeric_dtype(df_copy[col]):
+                    # Box-Cox requires positive data
+                    if (df_copy[col] <= 0).any():
+                        min_val = df_copy[col].min()
+                        data_shifted = df_copy[col] - min_val + 1
+                        df_copy[col], _ = stats.boxcox(data_shifted)
+                    else:
+                        df_copy[col], _ = stats.boxcox(df_copy[col])
+                        
+        elif transformation_type == "yeojohnson_transform":
+            pt = PowerTransformer(method='yeo-johnson')
+            valid_cols = [c for c in affected_cols if c in df_copy.columns and pd.api.types.is_numeric_dtype(df_copy[c])]
+            if valid_cols:
+                df_copy[valid_cols] = pt.fit_transform(df_copy[valid_cols])
+                
+        elif transformation_type == "quantile_transform":
+            output_dist = params.get('output_distribution', 'normal')
+            qt = QuantileTransformer(output_distribution=output_dist)
+            valid_cols = [c for c in affected_cols if c in df_copy.columns and pd.api.types.is_numeric_dtype(df_copy[c])]
+            if valid_cols:
+                df_copy[valid_cols] = qt.fit_transform(df_copy[valid_cols])
+                
+        elif transformation_type == "reciprocal_transform":
+            for col in affected_cols:
+                if col in df_copy.columns and pd.api.types.is_numeric_dtype(df_copy[col]):
+                    # Avoid division by zero
+                    df_copy[col] = 1 / (df_copy[col] + 1e-6)
 
+        # --- Encoding ---
+        elif transformation_type == "label_encoder":
+            le = LabelEncoder()
+            for col in affected_cols:
+                if col in df_copy.columns:
+                    # Convert to string first to handle mixed types
+                    df_copy[col] = le.fit_transform(df_copy[col].astype(str))
+                    
+        elif transformation_type == "onehot_encoder":
+            valid_cols = [c for c in affected_cols if c in df_copy.columns]
+            if valid_cols:
+                df_copy = pd.get_dummies(df_copy, columns=valid_cols, drop_first=True)
+                
+        elif transformation_type == "ordinal_encoder":
+            oe = OrdinalEncoder()
+            valid_cols = [c for c in affected_cols if c in df_copy.columns]
+            if valid_cols:
+                # Ensure string type
+                for col in valid_cols:
+                    df_copy[col] = df_copy[col].astype(str)
+                df_copy[valid_cols] = oe.fit_transform(df_copy[valid_cols])
+        
         # --- Outliers ---
         elif transformation_type == "remove_outliers_iqr":
-            # This filters rows, so it affects the whole dataframe
             multiplier = float(params.get('multiplier', 1.5))
-            mask = pd.Series(True, index=df_copy.index)
             for col in affected_cols:
                 if col in df_copy.columns and pd.api.types.is_numeric_dtype(df_copy[col]):
                     Q1 = df_copy[col].quantile(0.25)
                     Q3 = df_copy[col].quantile(0.75)
                     IQR = Q3 - Q1
-                    col_mask = (df_copy[col] >= Q1 - multiplier * IQR) & (df_copy[col] <= Q3 + multiplier * IQR)
-                    mask = mask & col_mask
-            df_copy = df_copy[mask]
-            
+                    df_copy = df_copy[(df_copy[col] >= Q1 - multiplier * IQR) & (df_copy[col] <= Q3 + multiplier * IQR)]
+                    
         elif transformation_type == "remove_outliers_zscore":
-            import numpy as np
-            from scipy import stats
             threshold = float(params.get('threshold', 3.0))
-            mask = pd.Series(True, index=df_copy.index)
             for col in affected_cols:
                 if col in df_copy.columns and pd.api.types.is_numeric_dtype(df_copy[col]):
                     z_scores = np.abs(stats.zscore(df_copy[col].dropna()))
-                    # Align z_scores with index if needed, but simple filtering:
-                    # Easier to use boolean indexing on valid values
-                    col_mask = np.abs((df_copy[col] - df_copy[col].mean()) / df_copy[col].std()) <= threshold
-                    mask = mask & col_mask
-            df_copy = df_copy[mask]
-            
+                    df_copy = df_copy[z_scores < threshold]
+                    
         elif transformation_type == "clip_outliers":
             lower = float(params.get('lower', 0.01))
             upper = float(params.get('upper', 0.99))
             for col in affected_cols:
                 if col in df_copy.columns and pd.api.types.is_numeric_dtype(df_copy[col]):
-                    df_copy[col] = df_copy[col].clip(lower=df_copy[col].quantile(lower), upper=df_copy[col].quantile(upper))
-
-        # --- Distribution ---
-        elif transformation_type == "log_transform":
-            import numpy as np
+                    lower_bound = df_copy[col].quantile(lower)
+                    upper_bound = df_copy[col].quantile(upper)
+                    df_copy[col] = df_copy[col].clip(lower=lower_bound, upper=upper_bound)
+                    
+        elif transformation_type == "winsorize_outliers":
+            limits = float(params.get('limits', 0.05))
             for col in affected_cols:
                 if col in df_copy.columns and pd.api.types.is_numeric_dtype(df_copy[col]):
-                    # Add small constant if needed, but log1p handles 0. Negative values will be NaN
-                    df_copy[col] = np.log1p(df_copy[col])
-                    
-        elif transformation_type == "sqrt_transform":
-            import numpy as np
-            for col in affected_cols:
-                if col in df_copy.columns and pd.api.types.is_numeric_dtype(df_copy[col]):
-                    df_copy[col] = np.sqrt(df_copy[col])
-                    
-        elif transformation_type == "boxcox_transform":
-            from scipy import stats
-            for col in affected_cols:
-                if col in df_copy.columns and pd.api.types.is_numeric_dtype(df_copy[col]):
-                    if (df_copy[col] <= 0).any():
-                        continue # Skip if not positive
-                    df_copy[col], _ = stats.boxcox(df_copy[col])
-                    
-        elif transformation_type == "yeojohnson_transform":
-            from sklearn.preprocessing import PowerTransformer
-            pt = PowerTransformer(method='yeo-johnson')
-            for col in affected_cols:
-                if col in df_copy.columns and pd.api.types.is_numeric_dtype(df_copy[col]):
-                    data = df_copy[col].values.reshape(-1, 1)
-                    df_copy[col] = pt.fit_transform(data).flatten()
+                    df_copy[col] = stats.mstats.winsorize(df_copy[col], limits=[limits, limits])
 
-        # --- Encoding ---
-        elif transformation_type == "label_encoder":
-            from sklearn.preprocessing import LabelEncoder
-            le = LabelEncoder()
-            for col in affected_cols:
-                if col in df_copy.columns:
-                    # Handle NaNs as a category
-                    series = df_copy[col].fillna('Unknown').astype(str)
-                    df_copy[col] = le.fit_transform(series)
-                    
-        elif transformation_type == "onehot_encoder":
-            import pandas as pd
-            # pd.get_dummies is easier than OneHotEncoder for dataframes
-            for col in affected_cols:
-                if col in df_copy.columns:
-                    dummies = pd.get_dummies(df_copy[col], prefix=col, dummy_na=True)
-                    df_copy = pd.concat([df_copy, dummies], axis=1)
-                    df_copy.drop(columns=[col], inplace=True)
-
-        # Fallback for generic types if still used
-        elif transformation_type == "handle_missing":
-             # ... (keep generic logic if needed, but specific ones cover it)
-             pass
-
-        return df_copy, True, f"Applied {transformation_type}"
+        return df_copy, True, "Transformation applied successfully"
     
     except Exception as e:
         print(f"Transformation error: {str(e)}")
-        import traceback
         traceback.print_exc()
         return df, False, f"Error: {str(e)}"
