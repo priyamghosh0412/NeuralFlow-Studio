@@ -10,5 +10,6 @@ urlpatterns = [
     path('eda/', include('eda.urls')),
     path('transformation/', include('transformation.urls')),
     path('nas/', include('nas.urls')),
-    path('nas/', include('nas.urls')),
+    path('agent-studio/', include('agent_studio.urls')),
+    path('visual-studio/', include('visual_studio.urls')),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

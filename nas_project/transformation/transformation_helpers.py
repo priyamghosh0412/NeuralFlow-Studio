@@ -633,3 +633,45 @@ def apply_transformation(df, transformation_type, params):
         print(f"Transformation error: {str(e)}")
         traceback.print_exc()
         return df, False, f"Error: {str(e)}"
+
+
+def generate_error_resolution(code, error_message, df_info):
+    """Generate resolution for transformation error using LLM"""
+    
+    prompt = f"""You are a Python debugging expert. A data transformation operation failed.
+    
+CONTEXT:
+- Columns: {', '.join(df_info.get('columns', []))}
+- Rows: {df_info.get('rows', 0)}
+
+FAILED CODE:
+{code}
+
+ERROR MESSAGE:
+{error_message}
+
+Analyze the error and provide a user-friendly explanation and a specific resolution.
+Return ONLY a valid JSON object in this EXACT format:
+{{
+  "explanation": "Concise 1-sentence explanation of what went wrong",
+  "resolution": "Specific instruction on how to fix it (e.g., 'Ensure column X exists' or 'Convert column Y to numeric first')"
+}}"""
+
+    response = call_ollama(prompt)
+    
+    if response:
+        try:
+            start_idx = response.find('{')
+            end_idx = response.rfind('}') + 1
+            if start_idx != -1 and end_idx > start_idx:
+                json_str = response[start_idx:end_idx]
+                result = json.loads(json_str)
+                return result
+        except json.JSONDecodeError:
+            pass
+            
+    return {
+        "explanation": "An error occurred during transformation.",
+        "resolution": "Please check the data types and column names."
+    }
+

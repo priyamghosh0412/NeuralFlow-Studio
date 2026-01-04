@@ -83,6 +83,9 @@
 <body class="h-screen overflow-hidden bg-gray-100">
     <div id="root"></div>
 
+    <script>
+        window.studioMode = "{{ studio_mode }}";
+    </script>
     <script type="text/babel">
         {% verbatim %}
         const { useState, useEffect } = React;

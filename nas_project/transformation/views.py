@@ -18,7 +18,10 @@ from .report_generator import generate_transformation_report
 @login_required
 def transformation_view(request):
     """Render the main transformation page."""
-    return render(request, 'transformation/transformation.html')
+    context = {
+        'studio_mode': request.session.get('studio_mode', 'autodl')
+    }
+    return render(request, 'transformation/transformation.html', context)
 
 @login_required
 @require_http_methods(["GET"])
@@ -99,12 +102,23 @@ def apply_selected_batch(request):
                 result, error = apply_transformations_logic(trans_list)
                 
                 if error:
+                    error_msg = error
+                    resolution = None
+                    failed_code = None
+                    
+                    if isinstance(error, dict):
+                        error_msg = error.get('message', 'Unknown error')
+                        resolution = error.get('resolution')
+                        failed_code = error.get('failed_code')
+                    
                     results.append({
                         'step': i,
                         'name': trans.get('name', f'Step {i+1}'),
                         'title': trans.get('title', 'Transformation'),
                         'status': 'failed',
-                        'message': error,
+                        'message': error_msg,
+                        'resolution': resolution,
+                        'failed_code': failed_code,
                         'description': trans.get('description', ''),
                         'affected_columns': affected_columns
                     })

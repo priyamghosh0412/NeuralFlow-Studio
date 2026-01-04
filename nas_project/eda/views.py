@@ -11,7 +11,33 @@ import numpy as np
 @login_required
 def eda_view(request):
     """Render the EDA page."""
-    return render(request, 'eda/eda.html')
+    # Check for studio mode in query params
+    if 'mode' in request.GET:
+        request.session['studio_mode'] = request.GET['mode']
+    elif 'studio_mode' in request.session:
+        # If no mode param but session has it, optional: clear it or keep it?
+        # Logic: If user goes to /eda directly without param, it might mean they want default.
+        # But let's stick to: if param exists, set it. if not, keep existing or default to None if we want reset.
+        # For now, let's explicitly reset if not entering with mode, to be safe, 
+        # OR just let it persist until changed.
+        # A safer bet for "AutoDL" (default) is to clear it if not present, BUT 
+        # the user might reload the page.
+        # Let's NOT clear it on reload, but rely on the homepage setting it.
+        # Homepage "AutoDL" link is just {% url 'eda_view' %}. 
+        pass
+    
+    # If coming from AutoDL button (no param), we should probably clear the visual_studio mode
+    # if it was set previously.
+    # Ideally, AutoDL button should also have ?mode=autodl or similar to be explicit.
+    # But for minimal changes: if request.GET is empty of 'mode', we can assume default.
+    if 'mode' not in request.GET:
+        # Default flow
+        request.session['studio_mode'] = 'autodl'
+
+    context = {
+        'studio_mode': request.session.get('studio_mode', 'autodl')
+    }
+    return render(request, 'eda/eda.html', context)
 
 @csrf_exempt
 @login_required
@@ -56,6 +82,7 @@ def load_from_path(request):
 def get_data_stats(request):
     """Get comprehensive EDA statistics."""
     load_state_from_disk()
+    print(f"DEBUG: get_data_stats called. Stats exists: {eda_state['stats'] is not None}")
     if eda_state['stats'] is None:
         return JsonResponse({'error': 'No data loaded'}, status=400)
     
@@ -188,6 +215,8 @@ def db_load(request):
         from .services import calculate_comprehensive_stats
         eda_state['comprehensive_stats'] = calculate_comprehensive_stats(df)
         
+        print(f"DEBUG: db_load success. Stats keys: {eda_state['stats'].keys() if eda_state['stats'] else 'None'}")
+
         from .services import save_state_to_disk
         save_state_to_disk()
         

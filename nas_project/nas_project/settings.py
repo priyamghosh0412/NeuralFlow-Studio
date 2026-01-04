@@ -50,6 +50,8 @@ INSTALLED_APPS = [
     'transformation',
     'nas',
     'accounts',
+    'agent_studio',
+    'visual_studio',
 ]
 
 MIDDLEWARE = [

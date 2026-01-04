@@ -1,0 +1,1031 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeuralFlow - Agent Studio</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        canvas: '#0f172a', /* slate-900 */
+                        panel: '#1e293b', /* slate-800 */
+                        border: '#334155', /* slate-700 */
+                        accent: '#a855f7', /* purple-500 */
+                        accentHover: '#9333ea', /* purple-600 */
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+
+        /* Dot Grid Background */
+        .dot-grid {
+            background-color: #0f172a;
+            background-image: radial-gradient(#334155 1px, transparent 1px);
+            background-size: 24px 24px;
+        }
+
+        /* Node Styles */
+        .node {
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
+        }
+
+        .node:hover {
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
+            border-color: #a855f7;
+        }
+
+        .node.selected {
+            border-color: #d8b4fe;
+            box-shadow: 0 0 0 2px #a855f7;
+        }
+
+        /* Connection Handles */
+        .handle {
+            width: 12px;
+            height: 12px;
+            background: #64748b;
+            border-radius: 50%;
+            transition: all 0.2s;
+            cursor: crosshair;
+        }
+
+        .handle:hover {
+            background: #a855f7;
+            transform: scale(1.2);
+        }
+
+        .handle-input {
+            left: -6px;
+        }
+
+        .handle-output {
+            right: -6px;
+        }
+
+        /* Smooth Bezier Connections */
+        svg.connections {
+            pointer-events: none;
+            overflow: visible;
+        }
+
+        path.connection {
+            fill: none;
+            stroke: #475569;
+            stroke-width: 2px;
+            transition: stroke 0.2s;
+        }
+
+        path.connection:hover {
+            stroke: #a855f7;
+            stroke-width: 3px;
+        }
+    </style>
+</head>
+
+<body class="flex flex-col h-screen bg-canvas text-slate-200 overflow-hidden font-sans">
+
+    <!-- Top Navigation Bar -->
+    <header class="h-14 bg-panel border-b border-gray-700 flex items-center justify-between px-4 shrink-0 z-50">
+        <div class="flex items-center gap-4">
+            <div class="flex items-center gap-2 text-white font-bold text-lg">
+                <div class="bg-purple-600 p-1.5 rounded-md">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z">
+                        </path>
+                    </svg>
+                </div>
+                <span>Agent Studio</span>
+            </div>
+            <div class="h-6 w-px bg-gray-700"></div>
+            <input type="text" id="flow-title" value="Untitled Flow"
+                class="bg-transparent text-sm text-slate-400 focus:outline-none focus:text-white border-b border-transparent hover:border-slate-700 focus:border-purple-500 transition-all px-1 max-w-[200px]"
+                spellcheck="false">
+        </div>
+
+        <div class="flex items-center gap-3">
+            <button
+                class="bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded-md text-sm font-medium transition-colors flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2">
+                    </path>
+                </svg>
+                Save
+            </button>
+            <button
+                class="bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded-md text-sm font-medium transition-colors flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z">
+                    </path>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                </svg>
+                Settings
+            </button>
+            <div class="h-6 w-px bg-gray-700"></div>
+            <button
+                class="bg-green-600 hover:bg-green-700 text-white px-4 py-1.5 rounded-md text-sm font-medium transition-colors flex items-center gap-2 shadow-lg shadow-green-900/20">
+                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd"
+                        d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
+                        clip-rule="evenodd"></path>
+                </svg>
+                Run Flow
+            </button>
+            <button
+                class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-1.5 rounded-md text-sm font-medium transition-colors flex items-center gap-2 shadow-lg shadow-purple-900/20">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                </svg>
+                Deploy
+            </button>
+        </div>
+    </header>
+
+    <div class="flex-1 flex overflow-hidden">
+        <!-- Left Sidebar: Node Palette -->
+        <aside class="w-72 bg-panel border-r border-gray-700 flex flex-col shrink-0 z-40 select-text"
+            onmousedown="event.stopPropagation()" onclick="event.stopPropagation()" onmouseup="event.stopPropagation()">
+            <div class="p-4 border-b border-gray-700">
+                <div class="relative">
+                    <input type="text" placeholder="Search components..."
+                        class="w-full bg-slate-900 border border-slate-700 text-slate-300 text-sm rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 placeholder-slate-500">
+                    <svg class="w-4 h-4 text-slate-500 absolute right-3 top-2.5" fill="none" stroke="currentColor"
+                        viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                    </svg>
+                </div>
+            </div>
+
+            <div class="flex-1 overflow-y-auto p-2">
+                <!-- Inputs Category -->
+                <div class="mb-4">
+                    <div
+                        class="px-2 py-1 text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 flex items-center justify-between group cursor-pointer">
+                        <span>Inputs</span>
+                        <svg class="w-3 h-3 text-slate-600 group-hover:text-slate-400" fill="none" stroke="currentColor"
+                            viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7">
+                            </path>
+                        </svg>
+                    </div>
+                    <div class="space-y-1">
+                        <div class="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-slate-700/50 cursor-grab active:cursor-grabbing border border-transparent hover:border-slate-600 transition-all draggable"
+                            draggable="true" data-type="chat-input">
+                            <div
+                                class="w-8 h-8 rounded-md bg-blue-500/20 text-blue-400 flex items-center justify-center">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z">
+                                    </path>
+                                </svg>
+                            </div>
+                            <div>
+                                <div class="text-sm font-medium text-slate-200">Chat Input</div>
+                                <div class="text-xs text-slate-500">User message source</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-slate-700/50 cursor-grab active:cursor-grabbing border border-transparent hover:border-slate-600 transition-all draggable"
+                            draggable="true" data-type="file-loader">
+                            <div
+                                class="w-8 h-8 rounded-md bg-green-500/20 text-green-400 flex items-center justify-center">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z">
+                                    </path>
+                                </svg>
+                            </div>
+                            <div>
+                                <div class="text-sm font-medium text-slate-200">File Loader</div>
+                                <div class="text-xs text-slate-500">PDF, TXT, CSV</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Models Category -->
+                <div class="mb-4">
+                    <div
+                        class="px-2 py-1 text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 flex items-center justify-between group cursor-pointer">
+                        <span>Models</span>
+                        <svg class="w-3 h-3 text-slate-600 group-hover:text-slate-400" fill="none" stroke="currentColor"
+                            viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7">
+                            </path>
+                        </svg>
+                    </div>
+                    <div class="space-y-1">
+                        <div class="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-slate-700/50 cursor-grab active:cursor-grabbing border border-transparent hover:border-slate-600 transition-all draggable"
+                            draggable="true" data-type="local-llm">
+                            <div
+                                class="w-8 h-8 rounded-md bg-orange-900/40 text-orange-300 flex items-center justify-center border border-orange-700/30">
+                                <span class="font-bold text-xs">LOC</span>
+                            </div>
+                            <div>
+                                <div class="text-sm font-medium text-slate-200">Local LLM</div>
+                                <div class="text-xs text-slate-500">Ollama Models</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Prompts -->
+                <div class="mb-4">
+                    <div
+                        class="px-2 py-1 text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 flex items-center justify-between group cursor-pointer">
+                        <span>Prompts</span>
+                        <svg class="w-3 h-3 text-slate-600 group-hover:text-slate-400" fill="none" stroke="currentColor"
+                            viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7">
+                            </path>
+                        </svg>
+                    </div>
+                    <div class="space-y-1">
+                        <div class="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-slate-700/50 cursor-grab active:cursor-grabbing border border-transparent hover:border-slate-600 transition-all draggable"
+                            draggable="true" data-type="prompt-template">
+                            <div
+                                class="w-8 h-8 rounded-md bg-yellow-500/20 text-yellow-500 flex items-center justify-center">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z">
+                                    </path>
+                                </svg>
+                            </div>
+                            <div>
+                                <div class="text-sm font-medium text-slate-200">Prompt Tem...</div>
+                                <div class="text-xs text-slate-500">Jinja2 support</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- User Status -->
+            <div class="p-4 border-t border-gray-700 bg-slate-900/50">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500"></div>
+                    <div class="overflow-hidden">
+                        <div class="text-sm font-medium text-white truncate">{{ user.username }}</div>
+                        <div class="text-xs text-green-400 flex items-center gap-1">
+                            <div class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
+                            Online
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Canvas -->
+        <main class="flex-1 relative overflow-hidden dot-grid bg-canvas" id="workspace">
+
+            <!-- Canvas Transformation Layer -->
+            <div id="canvas-content"
+                class="absolute top-0 left-0 w-full h-full origin-top-left transition-transform duration-75 ease-out will-change-transform"
+                style="transform: translate(0px, 0px) scale(1);">
+
+                <!-- Connections Layer -->
+                <svg id="connections-layer"
+                    class="connections absolute top-0 left-0 w-[5000px] h-[5000px] z-0 pointer-events-none overflow-visible">
+                    <!-- Dynamic paths will be added here -->
+                    <path id="temp-connection" d="" class="connection hidden pointer-events-none opacity-50"></path>
+                </svg>
+
+                <!-- Nodes Container -->
+                <div id="nodes-layer" class="absolute top-0 left-0 w-full h-full z-10">
+                    <!-- Dynamic nodes will be added here -->
+                </div>
+
+            </div>
+
+            <!-- Grid Controls -->
+            <div class="absolute bottom-6 left-6 flex items-center gap-2 z-10">
+                <div class="bg-panel border border-gray-700 rounded-lg shadow-lg p-1 flex items-center">
+                    <button id="zoom-out"
+                        class="p-1.5 hover:bg-slate-700 rounded text-slate-400 hover:text-white transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"></path>
+                        </svg>
+                    </button>
+                    <span id="zoom-level" class="text-xs font-mono text-slate-300 w-12 text-center">100%</span>
+                    <button id="zoom-in"
+                        class="p-1.5 hover:bg-slate-700 rounded text-slate-400 hover:text-white transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4">
+                            </path>
+                        </svg>
+                    </button>
+                </div>
+                <button id="reset-view"
+                    class="bg-panel border border-gray-700 rounded-lg shadow-lg p-2 text-slate-400 hover:text-white hover:bg-slate-700 transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4">
+                        </path>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Mini Map -->
+            <div
+                class="absolute bottom-6 right-6 w-48 h-32 bg-panel/90 border border-gray-700 rounded-lg shadow-lg z-10 p-2 hidden lg:block backdrop-blur-sm pointer-events-none">
+                <div class="w-full h-full bg-slate-900/50 rounded border border-slate-700/50 relative">
+                    <!-- Simple static representation for UI -->
+                    <div class="absolute top-8 left-4 w-8 h-4 bg-blue-500/30 rounded-sm"></div>
+                    <div class="absolute top-8 left-16 w-8 h-4 bg-yellow-500/30 rounded-sm"></div>
+                    <div class="absolute top-8 left-28 w-8 h-4 bg-orange-500/30 rounded-sm"></div>
+                    <div class="absolute top-8 left-40 w-8 h-4 bg-blue-500/30 rounded-sm"></div>
+                    <div
+                        class="absolute top-0 left-0 w-24 h-16 border border-purple-500/50 bg-purple-500/10 rounded-sm">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Configuration Panel -->
+            <aside class="w-80 bg-panel border-l border-gray-700 flex flex-col shrink-0 z-40 select-text"
+                onmousedown="event.stopPropagation()" onclick="event.stopPropagation()"
+                onmouseup="event.stopPropagation()">
+                <div class="h-14 border-b border-gray-700 px-4 flex items-center justify-between">
+                    <span class="font-medium text-white" id="prop-title">Properties</span>
+                    <span class="text-xs text-slate-500" id="prop-type">Select a node</span>
+                </div>
+
+                <div class="flex-1 overflow-y-auto p-4 space-y-6">
+                    <!-- Model Selection -->
+                    <div class="space-y-2">
+                        <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Model</label>
+                        <div class="relative">
+                            <select id="model-select"
+                                class="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm text-slate-300 focus:outline-none focus:border-purple-500 appearance-none">
+                                <option value="" disabled selected>Loading models...</option>
+                            </select>
+                            <div class="absolute right-3 top-2.5 text-slate-500 pointer-events-none">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M19 9l-7 7-7-7">
+                                    </path>
+                                </svg>
+                            </div>
+                        </div>
+                        <p id="model-status" class="text-xs text-slate-500 hidden"></p>
+                    </div>
+
+                    <!-- Parameters -->
+                    <div class="space-y-4">
+                        <label
+                            class="text-xs font-semibold text-slate-400 uppercase tracking-wider block border-b border-slate-700 pb-1">Parameters</label>
+
+                        <div class="space-y-2">
+                            <div class="flex justify-between text-xs text-slate-400">
+                                <span>Temperature</span>
+                                <span>0.7</span>
+                            </div>
+                            <input type="range"
+                                class="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                                min="0" max="1" step="0.1" value="0.7">
+                        </div>
+
+                        <div class="space-y-2">
+                            <div class="flex justify-between text-xs text-slate-400">
+                                <span>Max Tokens</span>
+                                <span>2048</span>
+                            </div>
+                            <input type="range"
+                                class="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                                min="1" max="4096" step="1" value="2048">
+                        </div>
+
+                        <div class="flex items-center justify-between pt-2">
+                            <span class="text-sm text-slate-300">Stream Response</span>
+                            <button
+                                class="w-10 h-5 bg-purple-600 rounded-full relative transition-colors focus:outline-none">
+                                <span
+                                    class="absolute right-1 top-1 w-3 h-3 bg-white rounded-full shadow-sm transition-transform"></span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- System Prompt -->
+                    <div class="space-y-2">
+                        <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider">System
+                            Instructions</label>
+                        <textarea
+                            class="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm text-slate-300 font-mono focus:outline-none focus:border-purple-500 h-24 resize-none"
+                            placeholder="You are a helpful assistant..."></textarea>
+                    </div>
+                </div>
+
+                <div class="p-4 border-t border-gray-700">
+                    <button
+                        class="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 py-2 rounded border border-slate-600 transition-colors text-sm font-medium">Advanced
+                        Settings</button>
+                </div>
+            </aside>
+
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+
+            // --- State Management ---
+            let nodes = [];
+            let connections = [];
+            let nodeCounter = 0;
+            let selectedNode = null;
+            let scale = 1;
+            let panX = 0;
+            let panY = 0;
+            let isPanning = false;
+            let startX, startY;
+            let draggedNode = null;
+            let initialMouseX = 0;
+            let initialMouseY = 0;
+            let initialNodeX = 0;
+            let initialNodeY = 0;
+
+            // For drawing connections
+            let activeHandle = null;
+            let tempPath = document.getElementById('temp-connection');
+            let connectionsLayer = document.getElementById('connections-layer');
+            let nodesLayer = document.getElementById('nodes-layer');
+            let workspace = document.getElementById('workspace');
+            let canvasContent = document.getElementById('canvas-content');
+            let zoomLevelDisplay = document.getElementById('zoom-level');
+
+            // UI Elements for Properties
+            const propPanel = document.querySelector('aside.w-80');
+            const propTitle = document.getElementById('prop-title');
+            const propType = document.getElementById('prop-type');
+            const propContainer = propPanel.querySelector('.overflow-y-auto');
+
+            const NODE_TEMPLATES = {
+                'chat-input': {
+                    title: 'Chat Input',
+                    color: 'blue',
+                    icon: `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 012 2h-5l-5 5v-5z"></path></svg>`,
+                    inputs: [],
+                    outputs: [{ name: 'Message', id: 'msg-out', type: 'message', color: 'bg-blue-500' }],
+                    content: `<div class="text-xs text-slate-400">Provides the user's latest message</div>`,
+                    defaultData: {}
+                },
+                'file-loader': {
+                    title: 'File Loader',
+                    color: 'green',
+                    icon: `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path></svg>`,
+                    inputs: [],
+                    outputs: [{ name: 'File Content', id: 'file-out', type: 'text', color: 'bg-green-500' }],
+                    content: `<div class="text-xs text-slate-400">Loads local data documents</div>`,
+                    defaultData: { file_path: '' }
+                },
+                'prompt-template': {
+                    title: 'Prompt Template',
+                    color: 'yellow',
+                    icon: `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>`,
+                    inputs: [{ name: 'user_input', id: 'text-in', type: 'text', color: 'bg-blue-500' }],
+                    outputs: [{ name: 'Prompt HTML', id: 'prompt-out', type: 'prompt', color: 'bg-yellow-500' }],
+                    content: `<div class="bg-black/30 rounded border border-slate-700 p-2"><code class="text-[10px] text-green-300 font-mono block whitespace-pre-wrap" id="node-prompt-preview">You are a helpful assistant.\nUser: {user_input}</code></div>`,
+                    defaultData: { template: 'You are a helpful assistant.\nUser: {user_input}' }
+                },
+                'local-llm': {
+                    title: 'Local LLM',
+                    color: 'orange',
+                    icon: `<span class="font-bold text-[10px]">LOC</span>`,
+                    inputs: [{ name: 'Prompt', id: 'prompt-in', type: 'prompt', color: 'bg-yellow-500' }],
+                    outputs: [{ name: 'Response', id: 'resp-out', type: 'message', color: 'bg-purple-500' }],
+                    content: `<div class="space-y-2"><div class="flex items-center justify-between text-[10px]"><span class="text-slate-400">Model:</span><span class="text-slate-200" id="node-model-name">None</span></div><div class="flex items-center justify-between text-[10px]"><span class="text-slate-400">Temp:</span><span class="text-slate-200" id="node-temp-val">0.7</span></div></div>`,
+                    defaultData: { model: '', temperature: 0.7, max_tokens: 2048, system_prompt: '' }
+                },
+                'chat-output': {
+                    title: 'Chat Output',
+                    color: 'blue',
+                    icon: `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 012 2h-5l-5 5v-5z"></path></svg>`,
+                    inputs: [{ name: 'Input Text', id: 'msg-in', type: 'message', color: 'bg-purple-500' }],
+                    outputs: [],
+                    content: `<div class="text-xs text-slate-400">Sends response back to user</div>`,
+                    defaultData: {}
+                }
+            };
+
+            function createNode(type, x, y) {
+                const template = NODE_TEMPLATES[type];
+                if (!template) return;
+
+                const nodeId = `node-${++nodeCounter}`;
+                const nodeEl = document.createElement('div');
+                nodeEl.id = nodeId;
+                nodeEl.className = 'node absolute w-64 bg-panel border-2 border-slate-700 rounded-xl z-20 transition-all';
+                nodeEl.style.transform = `translate(${x}px, ${y}px)`;
+                nodeEl.setAttribute('data-type', type);
+
+                // --- Build Node HTML ---
+                let html = `
+                    <div class="px-4 py-3 border-b border-gray-700 bg-slate-800/50 rounded-t-xl flex items-center justify-between handle-drag cursor-move transition-colors hover:bg-slate-700/50">
+                        <div class="flex items-center gap-2">
+                            <div class="w-6 h-6 rounded bg-${template.color}-500/20 text-${template.color}-400 flex items-center justify-center">${template.icon}</div>
+                            <span class="font-semibold text-sm">${template.title}</span>
+                        </div>
+                        <button class="delete-node text-slate-500 hover:text-red-400 transition-colors p-1" title="Delete Node">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="p-4 space-y-4">`;
+
+                // Add Inputs
+                template.inputs.forEach(input => {
+                    html += `
+                    <div class="flex items-center relative h-6">
+                        <div class="absolute -left-[22px] handle handle-input ${input.color}" data-handle-id="${input.id}" data-node-id="${nodeId}" title="${input.name}"></div>
+                        <span class="text-[10px] text-slate-500 uppercase font-bold ml-1">${input.name}</span>
+                    </div>`;
+                });
+
+                // Add Content
+                html += template.content;
+
+                // Add Outputs
+                template.outputs.forEach(output => {
+                    html += `
+                    <div class="flex items-center justify-end relative h-6">
+                        <span class="text-[10px] text-slate-500 uppercase font-bold mr-2">${output.name}</span>
+                        <div class="absolute -right-[22px] handle handle-output ${output.color}" data-handle-id="${output.id}" data-node-id="${nodeId}" title="${output.name}"></div>
+                    </div>`;
+                });
+
+                html += `</div>`;
+                nodeEl.innerHTML = html;
+                nodesLayer.appendChild(nodeEl);
+
+                const nodeObj = { id: nodeId, type, x, y, el: nodeEl, data: JSON.parse(JSON.stringify(template.defaultData)) };
+                nodes.push(nodeObj);
+
+                // --- Event Listeners ---
+
+                // Click to Select (but not if clicking on controls/handles)
+                nodeEl.addEventListener('mousedown', (e) => {
+                    // Don't interfere with delete button or handles
+                    if (e.target.closest('.delete-node') || e.target.closest('.handle')) return;
+                    // Don't re-select if already selected
+                    if (selectedNode === nodeObj) {
+                        console.log("[Node] Already selected, skipping re-render");
+                        return;
+                    }
+                    selectNode(nodeObj);
+                });
+
+                // Dragging
+                nodeEl.querySelector('.handle-drag').addEventListener('mousedown', (e) => {
+                    e.stopPropagation();
+                    draggedNode = nodeObj;
+                    initialMouseX = e.clientX;
+                    initialMouseY = e.clientY;
+                    initialNodeX = nodeObj.x;
+                    initialNodeY = nodeObj.y;
+                    nodeEl.classList.add('z-50');
+                });
+
+                // Port Connections
+                nodeEl.querySelectorAll('.handle').forEach(handle => {
+                    handle.addEventListener('mousedown', (e) => {
+                        e.stopPropagation();
+                        activeHandle = {
+                            el: handle,
+                            nodeId: nodeId,
+                            handleId: handle.dataset.handleId,
+                            type: handle.classList.contains('handle-output') ? 'output' : 'input'
+                        };
+                        tempPath.classList.remove('hidden');
+                    });
+                });
+
+                // Delete Button
+                nodeEl.querySelector('.delete-node').addEventListener('mousedown', (e) => {
+                    e.stopPropagation();
+                    deleteNode(nodeId);
+                });
+
+                return nodeObj;
+            }
+
+            function deleteNode(nodeId) {
+                const index = nodes.findIndex(n => n.id === nodeId);
+                if (index !== -1) {
+                    const node = nodes[index];
+                    // Remove associated connections
+                    connections = connections.filter(conn => {
+                        if (conn.sourceNodeId === nodeId || conn.targetNodeId === nodeId) {
+                            conn.pathEl.remove();
+                            return false;
+                        }
+                        return true;
+                    });
+
+                    // Remove from DOM
+                    node.el.remove();
+                    // Remove from State
+                    nodes.splice(index, 1);
+
+                    if (selectedNode && selectedNode.id === nodeId) {
+                        deselectAll();
+                    }
+                    updateConnections();
+                }
+            }
+
+            function selectNode(nodeObj) {
+                if (selectedNode === nodeObj) return; // Prevent double render
+                // Deselect others
+                nodes.forEach(n => n.el.classList.remove('selected', 'border-purple-500', 'ring-2', 'ring-purple-500'));
+                selectedNode = nodeObj;
+                nodeObj.el.classList.add('selected', 'border-purple-500', 'ring-2', 'ring-purple-500');
+
+                // Populate Properties Panel
+                propTitle.textContent = NODE_TEMPLATES[nodeObj.type].title;
+                propType.textContent = nodeObj.type.toUpperCase();
+
+                renderProperties(nodeObj);
+            }
+
+            function deselectAll() {
+                nodes.forEach(n => n.el.classList.remove('selected', 'border-purple-500', 'ring-2', 'ring-purple-500'));
+                selectedNode = null;
+                propTitle.textContent = 'Properties';
+                propType.textContent = 'Select a node';
+                propContainer.innerHTML = '<div class="text-slate-500 text-sm italic text-center py-10">Select a node to edit properties</div>';
+            }
+
+            let ollamaModels = [];
+            let isFetchingModels = false;
+
+            async function fetchModels() {
+                if (isFetchingModels) return;
+                isFetchingModels = true;
+                console.log("[Ollama] fetchModels: Starting fetch...");
+
+                // Update UI state if Local LLM is selected
+                if (selectedNode && selectedNode.type === 'local-llm') {
+                    const refreshBtn = document.getElementById('refresh-models-btn');
+                    if (refreshBtn) refreshBtn.classList.add('animate-spin');
+                }
+
+                try {
+                    const response = await fetch('/agent-studio/api/models/');
+                    const data = await response.json();
+                    ollamaModels = data.models || [];
+                    console.log("[Ollama] fetchModels: Successfully fetched models:", ollamaModels);
+                } catch (e) {
+                    console.error("[Ollama] fetchModels: Fetch failed:", e);
+                    ollamaModels = [];
+                } finally {
+                    isFetchingModels = false;
+                    console.log("[Ollama] fetchModels: Fetch cycle complete.");
+                    if (selectedNode && selectedNode.type === 'local-llm') {
+                        renderProperties(selectedNode);
+                    }
+                }
+            }
+            fetchModels();
+
+            function renderProperties(node) {
+                console.log("[Properties] renderProperties: Rendering for node:", node.id, "Type:", node.type);
+                propContainer.innerHTML = '';
+                if (node.type === 'local-llm') {
+                    console.log("[Properties] renderProperties: Current models available:", ollamaModels);
+                    let modelOptions = ollamaModels.map(m => `<option value="${m.name}" ${node.data.model === m.name ? 'selected' : ''}>${m.name} (${m.size})</option>`).join('');
+
+                    const emptyState = ollamaModels.length === 0 ? `<option value="" disabled selected>No models found. Check Ollama.</option>` : '';
+
+                    propContainer.innerHTML = `
+                        <div class="space-y-6">
+                            <div class="space-y-2">
+                                <div class="flex justify-between items-center">
+                                    <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Model</label>
+                                    <button id="refresh-models-btn" class="text-slate-500 hover:text-purple-400 p-1 transition-colors" title="Refresh Models">
+                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                                        </svg>
+                                    </button>
+                                </div>
+                                <select class="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-sm text-slate-300 focus:outline-none focus:border-purple-500 cursor-pointer relative z-10" data-key="model">
+                                    ${emptyState || `<option value="" disabled ${!node.data.model ? 'selected' : ''}>Select a model</option>`}
+                                    ${modelOptions}
+                                </select>
+                            </div>
+                            <div class="space-y-2">
+                                <div class="flex justify-between text-xs text-slate-400">
+                                    <span>Temperature</span>
+                                    <span id="prop-temp-val">${node.data.temperature}</span>
+                                </div>
+                                <input type="range" class="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-purple-500" min="0" max="1" step="0.1" value="${node.data.temperature}" data-key="temperature">
+                            </div>
+                        </div>`;
+
+                    document.getElementById('refresh-models-btn').addEventListener('click', (e) => {
+                        console.log("[Properties] Refresh models clicked");
+                        fetchModels();
+                    });
+                    if (isFetchingModels) document.getElementById('refresh-models-btn').classList.add('animate-spin');
+
+                } else if (node.type === 'prompt-template') {
+                    propContainer.innerHTML = `
+                        <div class="space-y-2">
+                            <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Template</label>
+                            <textarea class="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-slate-300 font-mono h-48 focus:ring-1 focus:ring-purple-500 outline-none select-text pointer-events-auto" data-key="template">${node.data.template}</textarea>
+                        </div>`;
+                } else {
+                    propContainer.innerHTML = `<div class="text-slate-500 text-sm text-center py-10">No specific properties for ${node.type}</div>`;
+                }
+
+                propContainer.querySelectorAll('[data-key]').forEach(input => {
+                    // CRITICAL: Stop all event propagation for inputs to prevent canvas interference
+                    input.addEventListener('mousedown', (e) => {
+                        e.stopPropagation();
+                        console.log("[Input Protection] mousedown stopped for:", input.tagName);
+                    }, true);
+
+                    input.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                    }, true);
+
+                    input.addEventListener('focus', (e) => {
+                        console.log("[Input Protection] Focus gained on:", input.tagName);
+                        e.stopPropagation();
+                    }, true);
+
+                    input.addEventListener('input', (e) => {
+                        const key = input.dataset.key;
+                        node.data[key] = input.value;
+                        if (node.type === 'local-llm') {
+                            if (key === 'temperature') document.getElementById('prop-temp-val').textContent = input.value;
+                            const modelDisplay = node.el.querySelector('#node-model-name');
+                            const tempDisplay = node.el.querySelector('#node-temp-val');
+                            if (modelDisplay) modelDisplay.textContent = node.data.model ? node.data.model.split(':')[0] : 'None';
+                            if (tempDisplay) tempDisplay.textContent = node.data.temperature;
+                        }
+                        if (node.type === 'prompt-template' && key === 'template') {
+                            const preview = node.el.querySelector('#node-prompt-preview');
+                            if (preview) preview.textContent = input.value;
+                        }
+                    });
+
+                    // Specifically for select elements to trigger updates on change as well
+                    if (input.tagName === 'SELECT') {
+                        input.addEventListener('change', () => {
+                            const key = input.dataset.key;
+                            node.data[key] = input.value;
+                            const modelDisplay = node.el.querySelector('#node-model-name');
+                            if (modelDisplay) modelDisplay.textContent = node.data.model ? node.data.model.split(':')[0] : 'None';
+                        });
+                    }
+                });
+            }
+
+            function getHandlePosition(nodeId, handleId) {
+                const node = nodes.find(n => n.id === nodeId);
+                if (!node) return { x: 0, y: 0 };
+                const handle = node.el.querySelector(`[data-handle-id="${handleId}"]`);
+                if (!handle) return { x: 0, y: 0 };
+
+                const rect = handle.getBoundingClientRect();
+                const canvasRect = canvasContent.getBoundingClientRect();
+
+                return {
+                    x: (rect.left + rect.width / 2 - canvasRect.left) / scale,
+                    y: (rect.top + rect.height / 2 - canvasRect.top) / scale
+                };
+            }
+
+            function drawBezier(x1, y1, x2, y2) {
+                const cx = (x1 + x2) / 2;
+                return `M ${x1} ${y1} C ${cx} ${y1}, ${cx} ${y2}, ${x2} ${y2}`;
+            }
+
+            function updateConnections() {
+                connections.forEach(conn => {
+                    const start = getHandlePosition(conn.sourceNodeId, conn.sourceHandle);
+                    const end = getHandlePosition(conn.targetNodeId, conn.targetHandle);
+                    conn.pathEl.setAttribute('d', drawBezier(start.x, start.y, end.x, end.y));
+                });
+            }
+
+            function updateTransform() {
+                canvasContent.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+                if (zoomLevelDisplay) zoomLevelDisplay.textContent = `${Math.round(scale * 100)}%`;
+            }
+
+            // --- Window Listeners ---
+
+            window.addEventListener('mousemove', (e) => {
+                if (draggedNode) {
+                    const dx = (e.clientX - initialMouseX) / scale;
+                    const dy = (e.clientY - initialMouseY) / scale;
+                    draggedNode.x = initialNodeX + dx;
+                    draggedNode.y = initialNodeY + dy;
+                    draggedNode.el.style.transform = `translate(${draggedNode.x}px, ${draggedNode.y}px)`;
+                    updateConnections();
+                }
+
+                if (activeHandle) {
+                    const rect = canvasContent.getBoundingClientRect();
+                    const mouseX = (e.clientX - rect.left) / scale;
+                    const mouseY = (e.clientY - rect.top) / scale;
+                    const start = getHandlePosition(activeHandle.nodeId, activeHandle.handleId);
+
+                    if (activeHandle.type === 'output') {
+                        tempPath.setAttribute('d', drawBezier(start.x, start.y, mouseX, mouseY));
+                    } else {
+                        tempPath.setAttribute('d', drawBezier(mouseX, mouseY, start.x, start.y));
+                    }
+                }
+
+                if (isPanning) {
+                    panX = e.clientX - startX;
+                    panY = e.clientY - startY;
+                    updateTransform();
+                }
+            });
+
+            window.addEventListener('mouseup', (e) => {
+                if (draggedNode) {
+                    draggedNode.el.classList.remove('z-50');
+                    draggedNode = null;
+                }
+
+                if (activeHandle) {
+                    const target = e.target.closest('.handle');
+                    if (target && target.dataset.nodeId !== activeHandle.nodeId) {
+                        const targetType = target.classList.contains('handle-output') ? 'output' : 'input';
+
+                        if (targetType !== activeHandle.type) {
+                            // Valid Connection!
+                            const source = activeHandle.type === 'output' ? activeHandle : { nodeId: target.dataset.nodeId, handleId: target.dataset.handleId };
+                            const dest = activeHandle.type === 'input' ? activeHandle : { nodeId: target.dataset.nodeId, handleId: target.dataset.handleId };
+
+                            // Create SVG Path
+                            const pathEl = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                            pathEl.setAttribute('class', 'connection');
+                            connectionsLayer.appendChild(pathEl);
+
+                            connections.push({
+                                sourceNodeId: source.nodeId,
+                                sourceHandle: source.handleId,
+                                targetNodeId: dest.nodeId,
+                                targetHandle: dest.handleId,
+                                pathEl: pathEl
+                            });
+                            updateConnections();
+                        }
+                    }
+                    activeHandle = null;
+                    tempPath.classList.add('hidden');
+                }
+
+                if (isPanning) {
+                    isPanning = false;
+                    workspace.style.cursor = '';
+                }
+            });
+
+            // --- Canvas Controls ---
+            workspace.addEventListener('wheel', (e) => {
+                if (e.ctrlKey || e.metaKey) {
+                    e.preventDefault();
+                    const delta = -e.deltaY * 0.001;
+                    scale = Math.min(Math.max(0.1, scale + delta), 3);
+                    updateTransform();
+                    updateConnections(); // Handles might shift relative to scale? Usually no but just in case
+                } else {
+                    e.preventDefault();
+                    panX -= e.deltaX;
+                    panY -= e.deltaY;
+                    updateTransform();
+                }
+            }, { passive: false });
+
+            workspace.addEventListener('mousedown', (e) => {
+                const isBg = e.target.id === 'workspace' || e.target.classList.contains('dot-grid') || e.target.id === 'canvas-content' || e.target.id === 'nodes-layer';
+                if (isBg || (e.buttons === 4)) {
+                    isPanning = true;
+                    startX = e.clientX - panX;
+                    startY = e.clientY - panY;
+                    workspace.style.cursor = 'grabbing';
+                }
+            });
+
+            // Zoom Buttons
+            document.getElementById('zoom-in')?.addEventListener('click', () => { scale = Math.min(3, scale + 0.1); updateTransform(); });
+            document.getElementById('zoom-out')?.addEventListener('click', () => { scale = Math.max(0.1, scale - 0.1); updateTransform(); });
+            document.getElementById('reset-view')?.addEventListener('click', () => { scale = 1; panX = 0; panY = 0; updateTransform(); });
+
+            // --- Palette Drag and Drop ---
+            document.querySelectorAll('.draggable').forEach(draggable => {
+                draggable.addEventListener('dragstart', (e) => {
+                    e.dataTransfer.setData('type', draggable.dataset.type);
+                });
+            });
+
+            workspace.addEventListener('dragover', (e) => e.preventDefault());
+            workspace.addEventListener('drop', (e) => {
+                e.preventDefault();
+                const type = e.dataTransfer.getData('type');
+                const rect = canvasContent.getBoundingClientRect();
+                const x = (e.clientX - rect.left) / scale - 32; // Center slightly
+                const y = (e.clientY - rect.top) / scale - 20;
+                createNode(type, x, y);
+            });
+
+            // --- Run Flow Navigation ---
+            document.querySelector('.bg-green-600').addEventListener('click', async () => {
+                // --- Validation ---
+                const hasChatOutput = nodes.some(n => n.type === 'chat-output');
+                if (!hasChatOutput) {
+                    alert("Validation Error: Your flow must include a 'Chat Output' node to receive a response.");
+                    return;
+                }
+
+                // Detect input node type
+                const inputNode = nodes.find(n => n.type === 'chat-input' || n.type === 'file-loader');
+                if (!inputNode) {
+                    alert("Validation Error: Your flow must include either a 'Chat Input' or 'File Loader' node.");
+                    return;
+                }
+
+                const flowTitle = document.getElementById('flow-title').value;
+                const flowData = {
+                    title: flowTitle,
+                    inputType: inputNode.type, // 'chat-input' or 'file-loader'
+                    nodes: nodes.map(n => ({
+                        id: n.id,
+                        type: n.type,
+                        data: n.data
+                    })),
+                    edges: connections.map(c => ({
+                        source: c.sourceNodeId,
+                        sourceHandle: c.sourceHandle,
+                        target: c.targetNodeId,
+                        targetHandle: c.targetHandle
+                    }))
+                };
+
+                // Save flow to sessionStorage for chat interface
+                sessionStorage.setItem('activeFlow', JSON.stringify(flowData));
+
+                // Redirect to chat interface
+                window.location.href = '/agent-studio/chat/';
+            });
+
+            deselectAll(); // Initial state
+            updateTransform();
+
+            // --- Capture Debuggers ---
+            document.addEventListener('mousedown', (e) => {
+                console.log("[Click Debug] Mousedown on:", e.target.tagName, "Classes:", e.target.className, "ID:", e.target.id);
+            }, true); // Use capture to see even if stopped
+
+            window.addEventListener('keydown', (e) => {
+                const target = e.target;
+                if (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT') {
+                    console.log("[Key Debug] Keydown in:", target.tagName, "Key:", e.key);
+                }
+            }, true);
+        });
+    </script>
+</body>
+
+</html>

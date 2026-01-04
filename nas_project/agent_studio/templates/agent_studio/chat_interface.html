@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent Chat - NeuralFlow</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+
+<body class="bg-slate-900 text-slate-200 font-sans h-screen flex flex-col">
+    <!-- Header -->
+    <header class="bg-slate-800 border-b border-slate-700 px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-4">
+            <a href="/agent-studio/" class="text-slate-400 hover:text-white transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+                </svg>
+            </a>
+            <div>
+                <h1 class="text-xl font-bold text-white" id="flow-title">Agent Chat</h1>
+                <p class="text-xs text-slate-400">Powered by <span id="flow-subtitle">Your Flow</span></p>
+            </div>
+        </div>
+        <button onclick="clearChat()" class="text-slate-400 hover:text-white transition-colors text-sm">
+            Clear Chat
+        </button>
+    </header>
+
+    <!-- Chat Messages -->
+    <div class="flex-1 overflow-y-auto px-6 py-6 space-y-4" id="chat-messages">
+        <div class="text-center text-slate-500 text-sm">
+            Start a conversation...
+        </div>
+    </div>
+
+    <!-- Input Area (Dynamic based on input type) -->
+    <div class="bg-slate-800 border-t border-slate-700 px-6 py-4">
+        <!-- Chat Input UI -->
+        <div id="chat-input-ui" class="hidden">
+            <div class="flex gap-3">
+                <input type="text" id="user-message" placeholder="Type your message..."
+                    class="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    onkeypress="if(event.key==='Enter') sendMessage()">
+                <button onclick="sendMessage()" id="send-btn"
+                    class="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path
+                            d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z">
+                        </path>
+                    </svg>
+                    Send
+                </button>
+            </div>
+        </div>
+
+        <!-- File Loader UI -->
+        <div id="file-loader-ui" class="hidden">
+            <div class="flex flex-col gap-3">
+                <div class="flex gap-3">
+                    <input type="file" id="file-input" class="hidden" onchange="handleFileSelect(event)">
+                    <button onclick="document.getElementById('file-input').click()"
+                        class="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-sm hover:bg-slate-800 transition-colors flex items-center justify-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12">
+                            </path>
+                        </svg>
+                        <span id="file-name">Choose a file...</span>
+                    </button>
+                    <button onclick="sendFile()" id="upload-btn" disabled
+                        class="bg-purple-600 hover:bg-purple-700 disabled:bg-slate-700 disabled:cursor-not-allowed text-white px-6 py-3 rounded-lg font-medium transition-colors">
+                        Upload & Process
+                    </button>
+                </div>
+                <p class="text-xs text-slate-500 text-center">Upload a file to process with your flow</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let flowData = null;
+        let selectedFile = null;
+        let conversationHistory = [];
+
+        // Load flow from sessionStorage
+        function loadFlow() {
+            const storedFlow = sessionStorage.getItem('activeFlow');
+            if (!storedFlow) {
+                alert('No flow data found. Redirecting to Agent Studio...');
+                window.location.href = '/agent-studio/';
+                return;
+            }
+            flowData = JSON.parse(storedFlow);
+            document.getElementById('flow-title').textContent = flowData.title || 'Agent Chat';
+
+            // Show appropriate input UI
+            if (flowData.inputType === 'chat-input') {
+                document.getElementById('chat-input-ui').classList.remove('hidden');
+            } else if (flowData.inputType === 'file-loader') {
+                document.getElementById('file-loader-ui').classList.remove('hidden');
+            }
+        }
+
+        function handleFileSelect(event) {
+            selectedFile = event.target.files[0];
+            if (selectedFile) {
+                document.getElementById('file-name').textContent = selectedFile.name;
+                document.getElementById('upload-btn').disabled = false;
+            }
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('user-message');
+            const message = input.value.trim();
+            if (!message) return;
+
+            addMessage(message, 'user');
+            input.value = '';
+
+            await executeFlow({ user_input: message });
+        }
+
+        async function sendFile() {
+            if (!selectedFile) return;
+
+            addMessage(`📎 Uploaded: ${selectedFile.name}`, 'user');
+            const fileContent = await selectedFile.text();
+
+            await executeFlow({ file_content: fileContent, file_name: selectedFile.name });
+
+            // Reset file input
+            document.getElementById('file-input').value = '';
+            document.getElementById('file-name').textContent = 'Choose a file...';
+            document.getElementById('upload-btn').disabled = true;
+            selectedFile = null;
+        }
+
+        async function executeFlow(inputs) {
+            const sendBtn = document.getElementById('send-btn') || document.getElementById('upload-btn');
+            sendBtn.disabled = true;
+
+            // Show loading message
+            const loadingMsg = addMessage('Thinking...', 'assistant', true);
+
+            try {
+                const response = await fetch('/agent-studio/api/run/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        ...flowData,
+                        inputs: inputs
+                    })
+                });
+
+                const result = await response.json();
+
+                // Remove loading message
+                loadingMsg.remove();
+
+                if (result.error) {
+                    addMessage(`Error: ${result.error}`, 'error');
+                } else {
+                    addMessage(result.result, 'assistant');
+                }
+            } catch (error) {
+                loadingMsg.remove();
+                addMessage(`Failed to execute flow: ${error.message}`, 'error');
+            } finally {
+                sendBtn.disabled = false;
+            }
+        }
+
+        function addMessage(text, sender, isLoading = false) {
+            const messagesContainer = document.getElementById('chat-messages');
+
+            // Remove "Start a conversation" placeholder
+            if (messagesContainer.children.length === 1 && messagesContainer.firstChild.textContent.includes('Start a conversation')) {
+                messagesContainer.innerHTML = '';
+            }
+
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `flex ${sender === 'user' ? 'justify-end' : 'justify-start'}`;
+
+            let bgColor = 'bg-purple-600';
+            let textColor = 'text-white';
+            if (sender === 'assistant') {
+                bgColor = 'bg-slate-700';
+            } else if (sender === 'error') {
+                bgColor = 'bg-red-600';
+            }
+
+            messageDiv.innerHTML = `
+                <div class="${bgColor} ${textColor} rounded-lg px-4 py-3 max-w-2xl">
+                    <p class="text-sm ${isLoading ? 'animate-pulse' : ''}">${text}</p>
+                </div>
+            `;
+
+            messagesContainer.appendChild(messageDiv);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+            return messageDiv;
+        }
+
+        function clearChat() {
+            const messagesContainer = document.getElementById('chat-messages');
+            messagesContainer.innerHTML = '<div class="text-center text-slate-500 text-sm">Start a conversation...</div>';
+        }
+
+        // Initialize on page load
+        window.addEventListener('DOMContentLoaded', loadFlow);
+    </script>
+</body>
+
+</html>

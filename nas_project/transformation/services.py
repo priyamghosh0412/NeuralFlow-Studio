@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from eda.services import eda_state, load_state_from_disk
-from .transformation_helpers import apply_transformation, parse_chat_transformation, generate_transformation_code
+from .transformation_helpers import apply_transformation, parse_chat_transformation, generate_transformation_code, generate_error_resolution
 from .transformation_catalog import TRANSFORMATION_CATALOG
 
 # Global state for Transformation
@@ -48,8 +48,47 @@ def get_transformation_options():
     if categorical_cols:
         available_options['encoding'] = TRANSFORMATION_CATALOG['encoding']
         
+    # Generate Column Summary with AI Suggestions
+    column_summary = []
+    for col in df.columns:
+        col_stat = stats['columns'].get(col, {})
+        
+        # Fallback if stat is missing (e.g. new column)
+        if not col_stat and col in df.columns:
+            missing_val = df[col].isnull().sum()
+            total_val = len(df)
+            missing_pct = (missing_val / total_val) * 100 if total_val > 0 else 0
+            unique_count = df[col].nunique()
+            dtype = 'numerical' if pd.api.types.is_numeric_dtype(df[col]) else 'categorical'
+        else:
+            missing_pct = col_stat.get('missing_pct', 0)
+            unique_count = col_stat.get('unique_count', 0)
+            dtype = col_stat.get('type', 'unknown')
+
+        # AI Suggestion Logic
+        suggestion = ""
+        if missing_pct > 0:
+            if missing_pct > 50:
+                 suggestion = "Drop Column (High Missing)"
+            elif dtype == 'numerical':
+                suggestion = "Impute with Median/Mean"
+            else:
+                suggestion = "Impute with Mode or Unknown"
+        elif unique_count == 1:
+            suggestion = "Drop Column (Constant)"
+        elif unique_count == len(df) and dtype != 'numerical':
+             suggestion = "Drop Column (ID-like)"
+        
+        column_summary.append({
+            'name': col,
+            'missing_pct': round(missing_pct, 1),
+            'unique_count': unique_count,
+            'suggestion': suggestion
+        })
+
     return {
         'options': available_options,
+        'column_summary': column_summary,
         'columns': {
             'all': list(df.columns),
             'numerical': numerical_cols,
@@ -91,6 +130,18 @@ def apply_transformations_logic(transformations):
                     applied.append({'id': trans_id, 'title': 'Custom Transformation', 'timestamp': pd.Timestamp.now().isoformat()})
                 except Exception as e:
                     print(f"Error in chat transform: {e}")
+                    # Generate AI resolution
+                    df_info = {
+                        'columns': list(df.columns),
+                        'rows': len(df)
+                    }
+                    resolution = generate_error_resolution(generated_code, str(e), df_info)
+                    
+                    return None, {
+                        'message': str(e),
+                        'resolution': resolution,
+                        'failed_code': generated_code
+                    }
         else:
             # Handle standard transform
             try:

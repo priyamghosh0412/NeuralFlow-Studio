@@ -152,31 +152,44 @@ def calculate_comprehensive_stats(df):
                 Q3 = non_null.quantile(0.75)
                 IQR = Q3 - Q1
                 
+                def safe_float(val):
+                    try:
+                        if pd.isna(val) or np.isnan(val) or np.isinf(val):
+                            return None
+                        return float(val)
+                    except:
+                        return None
+                
                 col_data['numeric'] = {
-                    'min': float(non_null.min()),
-                    'max': float(non_null.max()),
-                    'mean': float(non_null.mean()),
-                    'median': float(non_null.median()),
-                    'std': float(non_null.std()),
-                    'variance': float(non_null.var()),
-                    'skewness': float(skew(non_null)),
-                    'kurtosis': float(kurtosis(non_null)),
+                    'min': safe_float(non_null.min()),
+                    'max': safe_float(non_null.max()),
+                    'mean': safe_float(non_null.mean()),
+                    'median': safe_float(non_null.median()),
+                    'std': safe_float(non_null.std()),
+                    'variance': safe_float(non_null.var()),
                     'percentiles': {
-                        'p1': float(non_null.quantile(0.01)),
-                        'p5': float(non_null.quantile(0.05)),
-                        'p25': float(Q1),
-                        'p50': float(non_null.quantile(0.50)),
-                        'p75': float(Q3),
-                        'p95': float(non_null.quantile(0.95)),
-                        'p99': float(non_null.quantile(0.99))
+                        'p1': safe_float(non_null.quantile(0.01)),
+                        'p5': safe_float(non_null.quantile(0.05)),
+                        'p25': safe_float(Q1),
+                        'p50': safe_float(non_null.quantile(0.50)),
+                        'p75': safe_float(Q3),
+                        'p95': safe_float(non_null.quantile(0.95)),
+                        'p99': safe_float(non_null.quantile(0.99))
                     },
-                    'iqr': float(IQR),
-                    'cv': float(non_null.std() / non_null.mean()) if non_null.mean() != 0 else 0,
+                    'iqr': safe_float(IQR),
+                    'cv': safe_float(non_null.std() / non_null.mean()) if non_null.mean() != 0 else 0,
                     'zeros_count': int((non_null == 0).sum()),
                     'zeros_pct': round((non_null == 0).sum() / len(non_null) * 100, 2),
                     'negative_count': int((non_null < 0).sum()),
                     'negative_pct': round((non_null < 0).sum() / len(non_null) * 100, 2)
                 }
+
+                # Safe skew/kurtosis calculation
+                import warnings
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", category=RuntimeWarning)
+                    col_data['numeric']['skewness'] = safe_float(skew(non_null))
+                    col_data['numeric']['kurtosis'] = safe_float(kurtosis(non_null))
                 
                 # Outliers (IQR method)
                 outliers = ((non_null < (Q1 - 1.5 * IQR)) | (non_null > (Q3 + 1.5 * IQR))).sum()
