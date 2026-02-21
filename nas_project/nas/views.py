@@ -5,6 +5,7 @@ from django.views.decorators.http import require_http_methods
 from django.contrib.auth.decorators import login_required
 import json
 import os
+import numpy as np
 import pandas as pd
 from .services import (
     prepare_nas_data,
@@ -83,7 +84,22 @@ def stop_search(request):
 @require_http_methods(["GET"])
 def get_status(request):
     """Get search status."""
-    return JsonResponse(search_state)
+    def sanitize(obj):
+        """Recursively convert numpy types to native Python types for JSON serialization."""
+        if isinstance(obj, dict):
+            return {k: sanitize(v) for k, v in obj.items()}
+        elif isinstance(obj, (list, tuple)):
+            return [sanitize(v) for v in obj]
+        elif isinstance(obj, (np.integer,)):
+            return int(obj)
+        elif isinstance(obj, (np.floating,)):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return obj
+    
+    safe_state = sanitize(search_state)
+    return JsonResponse(safe_state)
 
 @login_required
 @require_http_methods(["GET"])

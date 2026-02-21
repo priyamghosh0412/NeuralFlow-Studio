@@ -11,9 +11,19 @@
         src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.development.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
     <style>
+        html, body {
+            height: 100%;
+            overflow: hidden;
+            margin: 0;
+        }
+
         body {
             font-family: 'Inter', sans-serif;
             background-color: #f8fafc;
+        }
+
+        #root {
+            height: 100%;
         }
 
         .scrollbar-hide::-webkit-scrollbar {
@@ -331,7 +341,7 @@
             const allComplete = progressData.length > 0 && progressData.every(p => p.status !== 'pending' && p.status !== 'running');
 
             return (
-                <div className="min-h-screen flex flex-col">
+                <div className="h-screen flex flex-col overflow-hidden">
                     {/* Header */}
                     <header className="bg-white border-b border-gray-200 px-8 py-4 flex justify-between items-center sticky top-0 z-10">
                         <div>

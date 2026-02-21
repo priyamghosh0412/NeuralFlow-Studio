@@ -7,6 +7,7 @@ from nas_rl.core import NASFramework
 from eda.services import eda_state, load_state_from_disk
 from transformation.services import transformation_state, ensure_state_loaded
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
 from utils.common import get_upload_folder
 
 # Global State for NAS
@@ -124,7 +125,12 @@ def run_search(X_train_path, y_train_path, X_val_path, y_val_path, target_metric
         # Determine shapes
         input_shape = (X_train.shape[1],)
         if problem_type == 'classification':
-            num_classes = len(np.unique(y_train))
+            # Ensure 0-indexed labels for classification
+            le = LabelEncoder()
+            y_train = le.fit_transform(y_train.ravel())
+            y_val = le.transform(y_val.ravel())
+            
+            num_classes = len(le.classes_)
             output_shape = num_classes if num_classes > 2 else 1
         else:
             output_shape = 1

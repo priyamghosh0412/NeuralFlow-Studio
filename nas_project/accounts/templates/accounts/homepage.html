@@ -5,7 +5,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NeuralFlow Studio - Home</title>
+    <title>FlowMind - Home</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -111,6 +111,92 @@
             background: rgba(255, 255, 255, 0.15);
             border-left: 3px solid #818cf8;
         }
+
+        /* Hover Animations */
+        @keyframes pulse-network {
+            0% {
+                transform: scale(1);
+                box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.7);
+            }
+
+            50% {
+                transform: scale(1.02);
+                box-shadow: 0 0 0 10px rgba(124, 58, 237, 0);
+            }
+
+            100% {
+                transform: scale(1);
+                box-shadow: 0 0 0 0 rgba(124, 58, 237, 0);
+            }
+        }
+
+        @keyframes stack-build {
+            0% {
+                transform: translateY(0);
+            }
+
+            50% {
+                transform: translateY(-5px);
+                border-bottom: 5px solid rgba(20, 184, 166, 0.5);
+            }
+
+            100% {
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes spectrum-rise {
+            0% {
+                background-position: 0% 50%;
+            }
+
+            50% {
+                background-position: 100% 50%;
+            }
+
+            100% {
+                background-position: 0% 50%;
+            }
+        }
+
+        @keyframes agent-connect {
+            0% {
+                transform: translate(0, 0);
+            }
+
+            25% {
+                transform: translate(-2px, 2px);
+            }
+
+            50% {
+                transform: translate(2px, -2px);
+            }
+
+            75% {
+                transform: translate(-2px, -2px);
+            }
+
+            100% {
+                transform: translate(0, 0);
+            }
+        }
+
+        .autodl-card:hover {
+            animation: pulse-network 2s infinite;
+        }
+
+        .domain-card:hover {
+            animation: stack-build 0.8s ease-in-out;
+        }
+
+        .visual-card:hover {
+            background-size: 200% 200%;
+            animation: spectrum-rise 3s ease infinite;
+        }
+
+        .agent-card:hover {
+            animation: agent-connect 0.5s ease-in-out;
+        }
     </style>
 </head>
 
@@ -120,11 +206,10 @@
         <div class="p-6 border-b border-indigo-700/50">
             <div class="flex items-center gap-3">
                 <div class="bg-indigo-500 p-2 rounded-lg">
-                    <img src="{% static 'images/app_icon.png' %}" alt="NeuralFlow" class="w-8 h-8">
+                    <img src="{% static 'images/app_icon.png' %}" alt="FlowMind" class="w-8 h-8">
                 </div>
                 <div>
-                    <h1 class="font-bold text-lg">NeuralFlow</h1>
-                    <p class="text-indigo-300 text-xs">Studio</p>
+                    <h1 class="font-bold text-lg">FlowMind</h1>
                 </div>
             </div>
         </div>
@@ -166,7 +251,7 @@
             <div class="mb-8">
                 <h1 class="text-3xl font-bold text-gray-900">Welcome back, {{ user.first_name|default:user.username }}
                 </h1>
-                <p class="text-gray-500 mt-1">Select a studio to get started</p>
+                <p class="text-gray-500 mt-1">Select a module to get started</p>
             </div>
 
             <!-- Studio Cards Grid -->
@@ -183,8 +268,8 @@
                             </div>
                             <span class="bg-green-500 text-white text-xs font-bold px-2 py-1 rounded-full">ACTIVE</span>
                         </div>
-                        <h2 class="text-2xl font-bold mb-2">AutoDL Studio</h2>
-                        <p class="text-indigo-200 text-sm">Automated modeling powered by neural architecture search</p>
+                        <h2 class="text-2xl font-bold mb-2">Neural Architect</h2>
+                        <p class="text-indigo-200 text-sm">Build and optimize neural networks automatically</p>
                     </div>
                 </a>
 
@@ -201,8 +286,8 @@
                             <span class="bg-teal-400/30 text-teal-100 text-xs font-bold px-2 py-1 rounded-full">COMING
                                 SOON</span>
                         </div>
-                        <h2 class="text-2xl font-bold mb-2">Domain Intelligence Studio</h2>
-                        <p class="text-teal-200 text-sm">Expert models tailored to your industry and use case</p>
+                        <h2 class="text-2xl font-bold mb-2">Industry Core</h2>
+                        <p class="text-teal-200 text-sm">Pre-trained models specialized for your sector</p>
                     </div>
                 </a>
 
@@ -220,8 +305,8 @@
                             </div>
                             <span class="bg-green-500 text-white text-xs font-bold px-2 py-1 rounded-full">ACTIVE</span>
                         </div>
-                        <h2 class="text-2xl font-bold mb-2">Visual Intelligence Studio</h2>
-                        <p class="text-orange-200 text-sm">An interactive playground for data discovery</p>
+                        <h2 class="text-2xl font-bold mb-2">Data Spectrum</h2>
+                        <p class="text-orange-200 text-sm">Interactive visualization and pattern discovery</p>
                     </div>
                 </a>
 
@@ -237,8 +322,8 @@
                             </div>
                             <span class="bg-green-500 text-white text-xs font-bold px-2 py-1 rounded-full">ACTIVE</span>
                         </div>
-                        <h2 class="text-2xl font-bold mb-2">Agent Studio</h2>
-                        <p class="text-purple-200 text-sm">A canvas for building LLM-powered systems</p>
+                        <h2 class="text-2xl font-bold mb-2">Agent Flow</h2>
+                        <p class="text-purple-200 text-sm">Orchestrate autonomous AI agents</p>
                     </div>
                 </a>
             </div>
