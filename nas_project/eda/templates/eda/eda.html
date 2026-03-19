@@ -1,0 +1,1598 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NAS Framework - Exploratory Data Analysis</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.development.js"></script>
+    <script crossorigin
+        src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.development.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: #f3f4f6;
+        }
+
+        .glass {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .tooltip {
+            position: relative;
+        }
+
+        .tooltip .tooltiptext {
+            visibility: hidden;
+            width: 220px;
+            background-color: #1f2937;
+            color: #fff;
+            text-align: left;
+            border-radius: 8px;
+            padding: 8px 12px;
+            position: absolute;
+            z-index: 50;
+            bottom: 125%;
+            left: 50%;
+            margin-left: -110px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            font-size: 11px;
+            line-height: 1.4;
+        }
+
+        .tooltip:hover .tooltiptext {
+            visibility: visible;
+            opacity: 1;
+        }
+
+        .stat-card {
+            transition: all 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #a8a8a8;
+        }
+    </style>
+</head>
+
+<body class="h-screen overflow-hidden bg-gray-100">
+    <div id="root"></div>
+
+    <script>
+        window.studioMode = "{{ studio_mode }}";
+    </script>
+    <script type="text/babel">
+        {% verbatim %}
+        const { useState, useEffect } = React;
+
+        const tooltips = {
+            'memory_usage_mb': 'Total RAM used by the dataset in megabytes',
+            'duplicate_rows': 'Number of completely identical rows',
+            'constant_columns': 'Columns with only one unique value',
+            'skewness': 'Asymmetry: 0=symmetric, >1=right-skewed, <-1=left-skewed',
+            'kurtosis': 'Tail heaviness: >3=heavy tails (more outliers), <3=light tails',
+            'cv': 'Coefficient of Variation (std/mean): measures relative variability',
+            'iqr': 'Interquartile Range (Q3-Q1): middle 50% spread',
+            'outliers_pct': 'Percentage of values outside 1.5×IQR from quartiles',
+            'rare_count': 'Categories appearing in <1% of rows',
+            'imbalance_ratio': 'Ratio of most to least frequent category'
+        };
+
+        function Tooltip({ label, children }) {
+            const tooltip = tooltips[label] || '';
+            return (
+                <div className="tooltip inline-block">
+                    {children}
+                    {tooltip && <span className="tooltiptext">{tooltip}</span>}
+                </div>
+            );
+        }
+
+        function StatCard({ title, value, subtitle, icon, color = 'indigo', tooltip }) {
+            const card = (
+                <div className={`stat-card bg-white rounded-xl shadow-lg p-6 border-t-4 border-${color}-500`}>
+                    <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                            <p className="text-gray-500 text-sm font-medium">{title}</p>
+                            <p className={`text-3xl font-bold text-${color}-600 mt-2`}>{value}</p>
+                            {subtitle && <p className="text-gray-400 text-xs mt-1">{subtitle}</p>}
+                        </div>
+                        {icon && <div className="text-4xl">{icon}</div>}
+                    </div>
+                </div>
+            );
+
+            return tooltip ? <Tooltip label={tooltip}>{card}</Tooltip> : card;
+        }
+
+        const ReportView = ({ stats, comprehensive, insights, onBack }) => {
+            const overview = comprehensive?.overview || {};
+            const columns = comprehensive?.columns || {};
+
+            return (
+                <div className="min-h-screen bg-white p-8 font-sans text-[#2d2a26]">
+                    {/* No-print controls */}
+                    <div className="print:hidden flex justify-between items-center mb-8 bg-gray-100 p-4 rounded-xl sticky top-0 z-50 shadow-sm">
+                        <button onClick={onBack} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg font-bold transition-colors">
+                            &larr; Back to Dashboard
+                        </button>
+                        <button onClick={() => window.print()} className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold flex items-center gap-2 transition-colors shadow-lg">
+                            <span>🖨️</span> Print Report
+                        </button>
+                    </div>
+
+                    {/* Report Content */}
+                    <div className="max-w-4xl mx-auto">
+                        <header className="mb-12 border-b-4 border-[#2d2a26] pb-8">
+                            <div className="flex items-center gap-4 mb-4">
+                                <div className="w-16 h-16 rounded-xl overflow-hidden border-2 border-[#2d2a26]">
+                                    <img src="/static/images/app_icon.png" alt="FlowMind" className="w-full h-full object-cover" />
+                                </div>
+                                <div>
+                                    <h1 className="text-4xl font-bold">Data Profiling Report</h1>
+                                    <p className="text-gray-600">Generated on {new Date().toLocaleDateString()}</p>
+                                </div>
+                            </div>
+
+                            {/* Summary Stats */}
+                            <div className="grid grid-cols-3 gap-4 mt-8">
+                                <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
+                                    <div className="text-sm text-gray-500 uppercase font-bold">Rows</div>
+                                    <div className="text-2xl font-bold">{stats.shape.rows.toLocaleString()}</div>
+                                </div>
+                                <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
+                                    <div className="text-sm text-gray-500 uppercase font-bold">Columns</div>
+                                    <div className="text-2xl font-bold">{stats.shape.columns}</div>
+                                </div>
+                                <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
+                                    <div className="text-sm text-gray-500 uppercase font-bold">Quality Score</div>
+                                    <div className="text-2xl font-bold">{overview.duplicate_rows === 0 && overview.missing_cells === 0 ? '100%' : '98%'}</div>
+                                </div>
+                            </div>
+                        </header>
+
+                        {/* Insights */}
+                        <section className="mb-12 break-inside-avoid">
+                            <h2 className="text-2xl font-bold mb-4 border-b-2 border-purple-200 inline-block">AI Insights</h2>
+                            <div className="bg-purple-50 p-6 rounded-xl border border-purple-100">
+                                <ul className="space-y-2">
+                                    {insights.map((insight, i) => (
+                                        <li key={i} className="flex gap-2 text-sm">
+                                            <span className="text-purple-600 font-bold">•</span>
+                                            <span dangerouslySetInnerHTML={{ __html: insight.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') }}></span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        </section>
+
+                        {/* Detailed Column Analysis */}
+                        <section>
+                            <h2 className="text-2xl font-bold mb-8 border-b-2 border-yellow-200 inline-block">Column Analysis</h2>
+                            <div className="space-y-8">
+                                {Object.values(columns).map((col, idx) => {
+                                    // Merge stats
+                                    const colStats = { ...col, ...stats.columns[col.name] };
+
+                                    return (
+                                        <div key={idx} className="break-inside-avoid border-2 border-gray-100 rounded-2xl p-6 mb-8 bg-white shadow-sm">
+                                            <div className="flex justify-between items-start mb-6">
+                                                <div className="flex items-center gap-4">
+                                                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-xl ${col.numeric ? 'bg-blue-100 text-blue-600' : 'bg-yellow-100 text-yellow-600'}`}>
+                                                        {col.numeric ? '🔢' : '🏷️'}
+                                                    </div>
+                                                    <div>
+                                                        <h3 className="text-xl font-bold">{col.name}</h3>
+                                                        <span className="text-xs font-bold bg-gray-100 px-2 py-1 rounded uppercase text-gray-500">{col.dtype}</span>
+                                                    </div>
+                                                </div>
+                                                <div className="text-right">
+                                                    <div className="text-sm text-gray-500">Missing</div>
+                                                    <div className="font-bold">{col.missing_pct}%</div>
+                                                </div>
+                                            </div>
+
+                                            {/* Stats Grid */}
+                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                                                {col.numeric ? (
+                                                    <>
+                                                        <div className="p-3 bg-gray-50 rounded-lg">
+                                                            <div className="text-xs text-gray-500">Min</div>
+                                                            <div className="font-bold">{colStats.numeric?.min?.toFixed(2)}</div>
+                                                        </div>
+                                                        <div className="p-3 bg-gray-50 rounded-lg">
+                                                            <div className="text-xs text-gray-500">Max</div>
+                                                            <div className="font-bold">{colStats.numeric?.max?.toFixed(2)}</div>
+                                                        </div>
+                                                        <div className="p-3 bg-gray-50 rounded-lg">
+                                                            <div className="text-xs text-gray-500">Mean</div>
+                                                            <div className="font-bold">{colStats.numeric?.mean?.toFixed(2)}</div>
+                                                        </div>
+                                                        <div className="p-3 bg-gray-50 rounded-lg">
+                                                            <div className="text-xs text-gray-500">Std Dev</div>
+                                                            <div className="font-bold">{colStats.numeric?.std?.toFixed(2)}</div>
+                                                        </div>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <div className="p-3 bg-gray-50 rounded-lg">
+                                                            <div className="text-xs text-gray-500">Unique</div>
+                                                            <div className="font-bold">{col.unique_count}</div>
+                                                        </div>
+                                                        <div className="p-3 bg-gray-50 rounded-lg">
+                                                            <div className="text-xs text-gray-500">Cardinality</div>
+                                                            <div className="font-bold">{col.cardinality}</div>
+                                                        </div>
+                                                    </>
+                                                )}
+                                            </div>
+
+                                            {/* Visualizations */}
+                                            {col.numeric && colStats.histogram && (
+                                                <div className="mt-4">
+                                                    <h4 className="text-sm font-bold mb-2 text-gray-500">Distribution</h4>
+                                                    <div className="h-32 flex items-end gap-0.5">
+                                                        {colStats.histogram.counts.map((count, i) => {
+                                                            const maxCount = Math.max(...colStats.histogram.counts);
+                                                            const heightPct = maxCount > 0 ? (count / maxCount) * 100 : 0;
+                                                            return (
+                                                                <div key={i} className="flex-1 bg-indigo-500 rounded-t-sm" style={{ height: `${heightPct}%` }}></div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                    <div className="flex justify-between mt-1 text-xs text-gray-400">
+                                                        <span>{colStats.histogram.bins[0].toFixed(1)}</span>
+                                                        <span>{colStats.histogram.bins[colStats.histogram.bins.length - 1].toFixed(1)}</span>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {col.categorical && (
+                                                <div className="mt-4">
+                                                    <h4 className="text-sm font-bold mb-2 text-gray-500">Top Values</h4>
+                                                    <div className="space-y-2">
+                                                        {Object.entries(col.categorical.top_5).slice(0, 5).map(([val, count], i) => (
+                                                            <div key={i} className="flex items-center gap-2 text-sm">
+                                                                <span className="w-24 truncate font-medium">{val}</span>
+                                                                <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                                                                    <div className="h-full bg-blue-500" style={{ width: `${col.categorical.top_5_pct[val]}%` }}></div>
+                                                                </div>
+                                                                <span className="text-gray-500 w-12 text-right">{count}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </section>
+                    </div>
+                </div>
+            );
+        };
+
+        function DataSourceSelector({ onSelectPostgres, onSelectFileUpload }) {
+            return (
+                <div className="h-screen flex overflow-hidden">
+                    {/* Left: Branding & Info */}
+                    <div className="hidden lg:flex lg:w-5/12 bg-gradient-to-br from-indigo-900 via-blue-900 to-indigo-800 items-center justify-center relative overflow-hidden">
+                            <div className="absolute inset-0 opacity-10">
+                                <div className="absolute top-20 left-10 w-32 h-32 border-2 border-white rounded-full"></div>
+                                <div className="absolute top-40 right-20 w-48 h-48 border border-white rounded-full"></div>
+                                <div className="absolute bottom-20 left-20 w-24 h-24 border-2 border-white rounded-full"></div>
+                                <div className="absolute bottom-40 right-10 w-40 h-40 border border-white rounded-full"></div>
+                            </div>
+                            <div className="relative z-10 p-12 text-white">
+                                <div className="flex items-center gap-3 mb-8">
+                                    <div className="w-14 h-14 rounded-xl overflow-hidden border-2 border-white/30">
+                                        <img src="/static/images/app_icon.png" alt="FlowMind" className="w-full h-full object-cover" />
+                                    </div>
+                                    <div>
+                                        <h1 className="text-2xl font-bold">FlowMind</h1>
+                                        <p className="text-blue-200 text-sm">Neural Architect</p>
+                                    </div>
+                                </div>
+                                <h2 className="text-4xl font-bold mb-4 leading-tight">Build Smarter<br/>Models, Faster.</h2>
+                                <p className="text-blue-200 text-lg mb-10 leading-relaxed">Connect your data source and let our AI-powered architecture search find the optimal model for your task.</p>
+                                <div className="space-y-4">
+                                    <div className="flex items-center gap-3 text-blue-100">
+                                        <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg></div>
+                                        <span className="text-sm">Automated neural architecture search</span>
+                                    </div>
+                                    <div className="flex items-center gap-3 text-blue-100">
+                                        <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg></div>
+                                        <span className="text-sm">Comprehensive data profiling & EDA</span>
+                                    </div>
+                                    <div className="flex items-center gap-3 text-blue-100">
+                                        <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg></div>
+                                        <span className="text-sm">Smart data transformation pipeline</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="absolute top-0 right-0 -mr-20 -mt-20 w-96 h-96 bg-white/5 rounded-full blur-3xl"></div>
+                            <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-80 h-80 bg-blue-500/20 rounded-full blur-3xl"></div>
+                        </div>
+
+                        {/* Right: Cards */}
+                        <div className="w-full lg:w-7/12 bg-gray-50 flex flex-col justify-center p-12">
+                            <div className="max-w-lg mx-auto w-full">
+                                <h2 className="text-3xl font-bold text-gray-900 mb-2">Choose Data Source</h2>
+                                <p className="text-gray-500 mb-10">How would you like to bring your data in?</p>
+
+                                <div className="space-y-5">
+                                    {/* Postgres Card */}
+                                    <button onClick={onSelectPostgres} className="group w-full bg-white rounded-2xl border-2 border-gray-200 p-6 text-left hover:border-blue-500 hover:shadow-xl transition-all duration-300 flex items-start gap-5">
+                                        <div className="w-14 h-14 bg-blue-100 rounded-xl flex items-center justify-center flex-shrink-0 group-hover:bg-blue-200 transition-colors">
+                                            <svg className="w-7 h-7 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" /></svg>
+                                        </div>
+                                        <div className="flex-1">
+                                            <h3 className="text-lg font-bold text-gray-900 group-hover:text-blue-600 transition-colors">Connect Postgres Database</h3>
+                                            <p className="text-gray-500 text-sm mt-1 leading-relaxed">Connect to PostgreSQL, browse schemas & tables, write custom queries.</p>
+                                            <div className="flex gap-2 mt-3">
+                                                <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-xs font-semibold rounded-full">Schema Browser</span>
+                                                <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-xs font-semibold rounded-full">SQL Editor</span>
+                                                <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-xs font-semibold rounded-full">Live Preview</span>
+                                            </div>
+                                        </div>
+                                        <svg className="w-5 h-5 text-gray-300 group-hover:text-blue-500 mt-1 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
+                                    </button>
+
+                                    {/* Upload Card */}
+                                    <button onClick={onSelectFileUpload} className="group w-full bg-white rounded-2xl border-2 border-gray-200 p-6 text-left hover:border-emerald-500 hover:shadow-xl transition-all duration-300 flex items-start gap-5">
+                                        <div className="w-14 h-14 bg-emerald-100 rounded-xl flex items-center justify-center flex-shrink-0 group-hover:bg-emerald-200 transition-colors">
+                                            <svg className="w-7 h-7 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
+                                        </div>
+                                        <div className="flex-1">
+                                            <h3 className="text-lg font-bold text-gray-900 group-hover:text-emerald-600 transition-colors">Upload CSV or XLSX File from Local</h3>
+                                            <p className="text-gray-500 text-sm mt-1 leading-relaxed">Upload files directly from your computer for instant analysis.</p>
+                                            <div className="flex gap-2 mt-3">
+                                                <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 text-xs font-semibold rounded-full">Drag & Drop</span>
+                                                <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 text-xs font-semibold rounded-full">.csv .xlsx .xls</span>
+                                                <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 text-xs font-semibold rounded-full">Instant Load</span>
+                                            </div>
+                                        </div>
+                                        <svg className="w-5 h-5 text-gray-300 group-hover:text-emerald-500 mt-1 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
+                                    </button>
+                                </div>
+
+                                <div className="mt-8">
+                                    <a href="/" className="text-gray-400 hover:text-gray-600 text-sm font-medium transition-colors">&larr; Back to Home</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+        }
+
+        function DBConnector({ onConnected }) {
+            const [credentials, setCredentials] = useState({
+                host: '',
+                port: '',
+                database: '',
+                user: '',
+                password: ''
+            });
+            const [connecting, setConnecting] = useState(false);
+            const [error, setError] = useState(null);
+
+            const handleChange = (e) => {
+                setCredentials({ ...credentials, [e.target.name]: e.target.value });
+            };
+
+            const handleConnect = async () => {
+                setConnecting(true);
+                setError(null);
+                try {
+                    const res = await fetch('/eda/api/db/connect', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ credentials })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        onConnected(credentials, data.schemas);
+                    } else {
+                        setError(data.error);
+                    }
+                } catch (e) {
+                    setError(e.message);
+                } finally {
+                    setConnecting(false);
+                }
+            };
+
+            return (
+                <div className="h-screen flex overflow-hidden">
+                    {/* Left: Form */}
+                    <div className="w-full lg:w-5/12 bg-white flex flex-col justify-center p-12 shadow-2xl z-10">
+                        <div className="max-w-md mx-auto w-full">
+                            <div className="flex items-center gap-3 mb-8">
+                                <div className="w-12 h-12 rounded-lg flex items-center justify-center overflow-hidden">
+                                    <img src="/static/images/app_icon.png" alt="FlowMind Logo" className="w-full h-full object-cover" />
+                                </div>
+                                <h1 className="text-2xl font-bold text-gray-900">FlowMind</h1>
+                            </div>
+
+                            <h2 className="text-3xl font-bold text-gray-900 mb-2">Connect Data Source</h2>
+                            <p className="text-gray-500 mb-8">Enter your PostgreSQL credentials to begin analysis.</p>
+
+                            {error && (
+                                <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-6 border border-red-100">
+                                    {error}
+                                </div>
+                            )}
+
+                            <div className="space-y-5">
+                                <div className="grid grid-cols-3 gap-4">
+                                    <div className="col-span-2">
+                                        <label className="block text-sm font-semibold text-gray-700 mb-1">Host</label>
+                                        <input
+                                            type="text"
+                                            name="host"
+                                            value={credentials.host}
+                                            onChange={handleChange}
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                                            placeholder="localhost"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-1">Port</label>
+                                        <input
+                                            type="text"
+                                            name="port"
+                                            value={credentials.port}
+                                            onChange={handleChange}
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                                            placeholder="5432"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-1">Database Name</label>
+                                    <input
+                                        type="text"
+                                        name="database"
+                                        value={credentials.database}
+                                        onChange={handleChange}
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                                        placeholder="postgres"
+                                    />
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-1">Username</label>
+                                        <input
+                                            type="text"
+                                            name="user"
+                                            value={credentials.user}
+                                            onChange={handleChange}
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                                            placeholder="postgres"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-1">Password</label>
+                                        <input
+                                            type="password"
+                                            name="password"
+                                            value={credentials.password}
+                                            onChange={handleChange}
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                                            placeholder="••••••"
+                                        />
+                                    </div>
+                                </div>
+
+                                <button
+                                    onClick={handleConnect}
+                                    disabled={connecting}
+                                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition-all shadow-md hover:shadow-lg mt-2 flex justify-center items-center gap-2"
+                                >
+                                    {connecting ? (
+                                        <>
+                                            <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                            </svg>
+                                            Connecting...
+                                        </>
+                                    ) : 'Connect Database'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Right: Visual */}
+                    <div className="hidden lg:flex lg:w-7/12 bg-blue-600 items-center justify-center relative overflow-hidden">
+                        <div className="absolute inset-0 bg-gradient-to-br from-blue-600 to-indigo-900 opacity-90"></div>
+                        <div className="relative z-10 text-center text-white p-12">
+                            <img src="/static/images/postgres_elephant.jpg" className="w-64 h-64 mx-auto mb-8 rounded-full shadow-2xl border-4 border-white/20" />
+                            <h3 className="text-4xl font-bold mb-4">Enterprise Grade Security</h3>
+                            <p className="text-blue-100 text-lg max-w-md mx-auto">Connect your data securely with our advanced encryption standards.</p>
+                        </div>
+                        {/* Decorative circles */}
+                        <div className="absolute top-0 right-0 -mr-20 -mt-20 w-96 h-96 bg-white/10 rounded-full blur-3xl"></div>
+                        <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-80 h-80 bg-indigo-500/30 rounded-full blur-3xl"></div>
+                    </div>
+                </div>
+            );
+        }
+
+        function FileUploader({ onAnalyze, onBack }) {
+            const [file, setFile] = useState(null);
+            const [uploading, setUploading] = useState(false);
+            const [error, setError] = useState(null);
+            const [dragOver, setDragOver] = useState(false);
+            const [uploadResult, setUploadResult] = useState(null);
+
+            const handleFile = (f) => {
+                const ext = f.name.split('.').pop().toLowerCase();
+                if (!['csv', 'xlsx', 'xls'].includes(ext)) {
+                    setError('Unsupported file type. Please upload a .csv, .xlsx, or .xls file.');
+                    return;
+                }
+                setFile(f);
+                setError(null);
+                setUploadResult(null);
+            };
+
+            const handleDrop = (e) => {
+                e.preventDefault();
+                setDragOver(false);
+                if (e.dataTransfer.files.length > 0) {
+                    handleFile(e.dataTransfer.files[0]);
+                }
+            };
+
+            const handleUpload = async () => {
+                if (!file) return;
+                setUploading(true);
+                setError(null);
+                try {
+                    const ext = file.name.split('.').pop().toLowerCase();
+                    const format = ext === 'csv' ? 'csv' : 'xlsx';
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    formData.append('format', format);
+
+                    const res = await fetch('/eda/api/upload_data', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        setUploadResult(data);
+                    } else {
+                        setError(data.error || 'Upload failed');
+                    }
+                } catch (e) {
+                    setError(e.message);
+                } finally {
+                    setUploading(false);
+                }
+            };
+
+            return (
+                <div className="h-screen flex overflow-hidden">
+                    {/* Left: Upload Form */}
+                    <div className="w-full lg:w-5/12 bg-white flex flex-col justify-center p-12 shadow-2xl z-10">
+                        <div className="max-w-md mx-auto w-full">
+                            <div className="flex items-center gap-3 mb-8">
+                                <div className="w-12 h-12 rounded-lg flex items-center justify-center overflow-hidden">
+                                    <img src="/static/images/app_icon.png" alt="FlowMind Logo" className="w-full h-full object-cover" />
+                                </div>
+                                <h1 className="text-2xl font-bold text-gray-900">FlowMind</h1>
+                            </div>
+
+                            <h2 className="text-3xl font-bold text-gray-900 mb-2">Upload Data File</h2>
+                            <p className="text-gray-500 mb-8">Upload a CSV or Excel file to begin analysis.</p>
+
+                            {error && (
+                                <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-6 border border-red-100">
+                                    {error}
+                                </div>
+                            )}
+
+                            {/* Drop Zone */}
+                            <div
+                                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                                onDragLeave={() => setDragOver(false)}
+                                onDrop={handleDrop}
+                                className={`border-2 border-dashed rounded-2xl p-10 text-center transition-all cursor-pointer ${dragOver ? 'border-emerald-500 bg-emerald-50' : file ? 'border-emerald-400 bg-emerald-50/50' : 'border-gray-300 hover:border-emerald-400 hover:bg-gray-50'}`}
+                                onClick={() => document.getElementById('file-input').click()}
+                            >
+                                <input
+                                    id="file-input"
+                                    type="file"
+                                    accept=".csv,.xlsx,.xls"
+                                    className="hidden"
+                                    onChange={(e) => { if (e.target.files[0]) handleFile(e.target.files[0]); }}
+                                />
+                                {file ? (
+                                    <div>
+                                        <div className="w-16 h-16 bg-emerald-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                            <svg className="w-8 h-8 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                            </svg>
+                                        </div>
+                                        <p className="font-semibold text-gray-900">{file.name}</p>
+                                        <p className="text-sm text-gray-500 mt-1">{(file.size / (1024 * 1024)).toFixed(2)} MB</p>
+                                        <p className="text-xs text-emerald-600 mt-2 font-medium">Click or drag to replace</p>
+                                    </div>
+                                ) : (
+                                    <div>
+                                        <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                            <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                                            </svg>
+                                        </div>
+                                        <p className="font-semibold text-gray-700">Drop your file here, or click to browse</p>
+                                        <p className="text-sm text-gray-400 mt-2">Supports .csv, .xlsx, .xls</p>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Upload Result Preview */}
+                            {uploadResult && (
+                                <div className="mt-6 bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <svg className="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
+                                        <span className="font-semibold text-emerald-800">Upload Successful</span>
+                                    </div>
+                                    <p className="text-sm text-emerald-700">{uploadResult.shape.rows.toLocaleString()} rows, {uploadResult.shape.columns} columns loaded.</p>
+                                </div>
+                            )}
+
+                            {/* Action Buttons */}
+                            <div className="mt-6 space-y-3">
+                                {!uploadResult ? (
+                                    <button
+                                        onClick={handleUpload}
+                                        disabled={!file || uploading}
+                                        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-lg transition-all shadow-md hover:shadow-lg flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        {uploading ? (
+                                            <>
+                                                <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                </svg>
+                                                Uploading...
+                                            </>
+                                        ) : 'Upload & Process'}
+                                    </button>
+                                ) : (
+                                    <button
+                                        onClick={onAnalyze}
+                                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-lg transition-all shadow-md hover:shadow-lg flex justify-center items-center gap-2"
+                                    >
+                                        Next: Analyze Data
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+                                    </button>
+                                )}
+                                <button
+                                    onClick={onBack}
+                                    className="w-full text-gray-500 hover:text-gray-700 font-medium py-2 text-sm transition-colors"
+                                >
+                                    &larr; Back to Data Source Selection
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Right: Visual */}
+                    <div className="hidden lg:flex lg:w-7/12 bg-emerald-600 items-center justify-center relative overflow-hidden">
+                        <div className="absolute inset-0 bg-gradient-to-br from-emerald-600 to-teal-900 opacity-90"></div>
+                        <div className="relative z-10 text-center text-white p-12">
+                            <div className="w-64 h-64 mx-auto mb-8 rounded-full bg-white/10 flex items-center justify-center border-4 border-white/20">
+                                <svg className="w-32 h-32 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                                </svg>
+                            </div>
+                            <h3 className="text-4xl font-bold mb-4">Quick Data Import</h3>
+                            <p className="text-emerald-100 text-lg max-w-md mx-auto">Upload your CSV or Excel files and start analyzing in seconds.</p>
+                        </div>
+                        {/* Decorative circles */}
+                        <div className="absolute top-0 right-0 -mr-20 -mt-20 w-96 h-96 bg-white/10 rounded-full blur-3xl"></div>
+                        <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-80 h-80 bg-teal-500/30 rounded-full blur-3xl"></div>
+                    </div>
+                </div>
+            );
+        }
+
+        function QueryToolbar({ onRun, onAnalyze, executing, loadingAnalysis, hasQuery, hasResults }) {
+            return (
+                <div className="h-14 border-b border-gray-200 flex items-center justify-between px-4 bg-white flex-shrink-0 relative z-10 overflow-visible">
+                    <div className="font-medium text-gray-700 flex-shrink-0">Query Editor</div>
+                    <div className="flex gap-2 flex-shrink-0 min-w-[250px] justify-end">
+                        <button
+                            onClick={onRun}
+                            disabled={executing || !hasQuery}
+                            className="bg-green-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 transition-colors flex items-center gap-2 whitespace-nowrap"
+                        >
+                            {executing ? 'Running...' : '▶ Run Query'}
+                        </button>
+                        <button
+                            onClick={onAnalyze}
+                            disabled={loadingAnalysis || !hasResults}
+                            className="bg-indigo-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors flex items-center gap-2 whitespace-nowrap"
+                        >
+                            {loadingAnalysis ? 'Loading...' : 'Next: Analyze →'}
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+
+        function QueryInterface({ credentials, schemas, onAnalyze }) {
+            const [selectedSchema, setSelectedSchema] = useState(schemas[0] || 'public');
+            const [tables, setTables] = useState([]);
+            const [query, setQuery] = useState('');
+            const [results, setResults] = useState(null);
+            const [loadingTables, setLoadingTables] = useState(false);
+            const [executing, setExecuting] = useState(false);
+            const [loadingAnalysis, setLoadingAnalysis] = useState(false);
+            const [error, setError] = useState(null);
+            const [page, setPage] = useState(1);
+            const [rowsPerPage, setRowsPerPage] = useState(100);
+            const [history, setHistory] = useState([]);
+            const [activeTab, setActiveTab] = useState('results'); // 'results', 'history'
+
+            useEffect(() => {
+                fetchTables(selectedSchema);
+            }, [selectedSchema]);
+
+            const fetchTables = async (schema) => {
+                setLoadingTables(true);
+                try {
+                    const res = await fetch('/eda/api/db/tables', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ credentials, schema })
+                    });
+                    const data = await res.json();
+                    if (data.success) setTables(data.tables);
+                } catch (e) {
+                    console.error(e);
+                } finally {
+                    setLoadingTables(false);
+                }
+            };
+
+            const handleTableClick = (table) => {
+                setQuery(`SELECT * FROM ${selectedSchema}.${table} LIMIT 100;`);
+            };
+
+            const executeQuery = async () => {
+                setExecuting(true);
+                setError(null);
+                try {
+                    const res = await fetch('/eda/api/db/query', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ credentials, query })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        setResults(data);
+                        setPage(1);
+                        setHistory(prev => [...prev, { query, timestamp: new Date().toLocaleTimeString() }]);
+                        setActiveTab('results');
+                    } else {
+                        setError(data.error);
+                    }
+                } catch (e) {
+                    setError(e.message);
+                } finally {
+                    setExecuting(false);
+                }
+            };
+
+            const handleAnalyze = async () => {
+                setLoadingAnalysis(true);
+                try {
+                    const res = await fetch('/eda/api/db/load', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ credentials, query })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        onAnalyze();
+                    } else {
+                        alert('Analysis failed: ' + data.error);
+                    }
+                } catch (e) {
+                    alert('Error: ' + e.message);
+                } finally {
+                    setLoadingAnalysis(false);
+                }
+            };
+
+            const handleSave = () => {
+                const blob = new Blob([query], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'query.sql';
+                a.click();
+                URL.revokeObjectURL(url);
+            };
+
+            const handleFormat = () => {
+                const keywords = ['SELECT', 'FROM', 'WHERE', 'GROUP BY', 'ORDER BY', 'LIMIT', 'JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'INNER JOIN', 'ON', 'AND', 'OR', 'INSERT INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE'];
+                let formatted = query;
+                keywords.forEach(kw => {
+                    const regex = new RegExp(`\\b${kw}\\b`, 'gi');
+                    formatted = formatted.replace(regex, kw.toUpperCase());
+                });
+                ['FROM', 'WHERE', 'GROUP BY', 'ORDER BY', 'LIMIT'].forEach(kw => {
+                    formatted = formatted.replace(new RegExp(`\\b${kw}\\b`, 'g'), `\n${kw}`);
+                });
+                setQuery(formatted);
+            };
+
+            const handleDownloadCSV = () => {
+                if (!results) return;
+                const headers = results.columns.join(',');
+                const rows = results.data.map(row => results.columns.map(c => {
+                    const val = row[c];
+                    return val === null ? '' : typeof val === 'string' && val.includes(',') ? `"${val}"` : val;
+                }).join(','));
+                const csv = [headers, ...rows].join('\n');
+                const blob = new Blob([csv], { type: 'text/csv' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'results.csv';
+                a.click();
+                URL.revokeObjectURL(url);
+            };
+
+            const handleDownloadJSON = () => {
+                if (!results) return;
+                const json = JSON.stringify(results.data, null, 2);
+                const blob = new Blob([json], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'results.json';
+                a.click();
+                URL.revokeObjectURL(url);
+            };
+
+            return (
+                <div className="h-screen flex flex-col overflow-hidden bg-white text-slate-800">
+                    {/* Top Bar */}
+                    <div className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 shadow-sm z-10">
+                        <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-lg overflow-hidden">
+                                    <img src="/static/images/app_icon.png" alt="FlowMind" className="w-full h-full object-cover" />
+                                </div>
+                                <h1 className="text-xl font-bold text-slate-800">Query Editor</h1>
+                            </div>
+                            <div className="h-6 w-px bg-slate-200 mx-2"></div>
+                            <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-full text-sm text-slate-600 border border-slate-200">
+                                <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                                postgres @ localhost
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <button
+                                onClick={handleAnalyze}
+                                disabled={loadingAnalysis || !results}
+                                className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 shadow-sm flex items-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {loadingAnalysis ? 'Loading...' : 'Next: Analyze'}
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="flex-1 flex overflow-hidden">
+                        {/* Sidebar */}
+                        <div className="w-64 bg-slate-50 border-r border-slate-200 flex flex-col">
+                            <div className="p-4 border-b border-slate-200">
+                                <select
+                                    value={selectedSchema}
+                                    onChange={(e) => setSelectedSchema(e.target.value)}
+                                    className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent shadow-sm mb-3"
+                                >
+                                    {schemas.map(s => <option key={s} value={s}>{s}</option>)}
+                                </select>
+                                <div className="relative">
+                                    <svg className="w-4 h-4 absolute left-3 top-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                                    <input type="text" placeholder="Search tables..." className="w-full bg-white border border-slate-200 rounded-lg pl-9 pr-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent shadow-sm" />
+                                </div>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-3 space-y-1">
+                                <div className="text-xs font-bold text-slate-400 uppercase px-2 py-2 tracking-wider">Tables</div>
+                                {loadingTables ? (
+                                    <div className="text-slate-400 text-sm italic px-2">Loading...</div>
+                                ) : tables.length === 0 ? (
+                                    <div className="text-slate-400 text-sm italic px-2">No tables found</div>
+                                ) : (
+                                    tables.map(t => (
+                                        <div
+                                            key={t}
+                                            onClick={() => handleTableClick(t)}
+                                            className="group flex items-center gap-2 px-2 py-2 text-slate-600 hover:bg-white hover:shadow-sm hover:text-indigo-600 rounded-lg cursor-pointer transition-all"
+                                        >
+                                            <svg className="w-4 h-4 text-slate-400 group-hover:text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>
+                                            <span className="text-sm font-medium">{t}</span>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Main Content */}
+                        <div className="flex-1 flex flex-col min-w-0 bg-white">
+                            {/* Tabs */}
+
+
+                            {/* Toolbar */}
+                            <div className="h-12 bg-white border-b border-slate-200 flex items-center justify-between px-4">
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={executeQuery}
+                                        disabled={executing}
+                                        className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm hover:shadow disabled:opacity-50"
+                                    >
+                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                        {executing ? 'RUNNING...' : 'RUN QUERY'}
+                                    </button>
+                                    <div className="h-5 w-px bg-slate-200 mx-2"></div>
+                                    <button onClick={handleSave} className="text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors">
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
+                                        Save
+                                    </button>
+                                    <button onClick={handleFormat} className="text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors">
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16m-7 6h7" /></svg>
+                                        Format
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Editor Area */}
+                            <div className="h-1/2 overflow-auto font-mono text-sm bg-white text-slate-800 relative">
+                                <textarea
+                                    value={query}
+                                    onChange={(e) => setQuery(e.target.value)}
+                                    className="w-full h-full p-6 outline-none resize-none"
+                                    placeholder="SELECT * FROM table_name LIMIT 100;"
+                                    spellCheck="false"
+                                />
+                            </div>
+
+                            {/* Results Pane */}
+                            <div className="flex-1 bg-slate-50 border-t border-slate-200 flex flex-col min-h-0">
+                                <div className="flex items-center justify-between px-4 py-2 bg-white border-b border-slate-200">
+                                    <div className="flex gap-6 text-xs font-semibold">
+                                        <button
+                                            onClick={() => setActiveTab('results')}
+                                            className={`${activeTab === 'results' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-500 hover:text-slate-800'} pb-2 -mb-2.5 transition-colors`}
+                                        >
+                                            Results {results ? `(${results.rows})` : ''}
+                                        </button>
+                                        <button
+                                            onClick={() => setActiveTab('history')}
+                                            className={`${activeTab === 'history' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-500 hover:text-slate-800'} pb-2 -mb-2.5 transition-colors`}
+                                        >
+                                            Query History
+                                        </button>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button onClick={handleDownloadCSV} className="text-xs text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 px-2 py-1 rounded flex items-center gap-1 transition-colors">
+                                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                                            CSV
+                                        </button>
+                                        <button onClick={handleDownloadJSON} className="text-xs text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 px-2 py-1 rounded flex items-center gap-1 transition-colors">
+                                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
+                                            JSON
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="flex-1 overflow-auto p-0 bg-white">
+                                    {activeTab === 'history' ? (
+                                        <div className="p-4 space-y-3">
+                                            {history.length === 0 ? (
+                                                <div className="text-slate-400 text-sm italic">No queries executed yet.</div>
+                                            ) : (
+                                                history.slice().reverse().map((h, i) => (
+                                                    <div key={i} className="bg-slate-50 p-3 rounded-lg border border-slate-200 hover:border-indigo-300 transition-colors group">
+                                                        <div className="flex justify-between items-center mb-1">
+                                                            <span className="text-xs text-slate-400">{h.timestamp}</span>
+                                                            <button
+                                                                onClick={() => setQuery(h.query)}
+                                                                className="text-xs text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity hover:underline"
+                                                            >
+                                                                Copy to Editor
+                                                            </button>
+                                                        </div>
+                                                        <pre className="text-xs font-mono text-slate-700 whitespace-pre-wrap">{h.query}</pre>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+                                    ) : error ? (
+                                        <div className="p-8 text-center text-red-600">
+                                            <p className="font-bold mb-2">Query Error</p>
+                                            <p className="text-sm font-mono bg-red-50 p-4 rounded border border-red-200 inline-block">{error}</p>
+                                        </div>
+                                    ) : results ? (
+                                        <table className="w-full text-sm text-left text-slate-600">
+                                            <thead className="text-xs text-slate-500 uppercase bg-slate-50 sticky top-0 shadow-sm">
+                                                <tr>
+                                                    {results.columns.map(c => (
+                                                        <th key={c} className="px-6 py-3 font-semibold border-b border-slate-200 whitespace-nowrap">{c}</th>
+                                                    ))}
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {results.data.slice((page - 1) * rowsPerPage, page * rowsPerPage).map((row, i) => (
+                                                    <tr key={i} className="hover:bg-slate-50 transition-colors">
+                                                        {results.columns.map(c => (
+                                                            <td key={c} className="px-6 py-3 whitespace-nowrap max-w-xs truncate">
+                                                                {row[c] === null ? <span className="text-slate-300 italic">null</span> : String(row[c])}
+                                                            </td>
+                                                        ))}
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    ) : (
+                                        <div className="flex-1 flex items-center justify-center text-slate-400">
+                                            <div className="text-center">
+                                                <div className="text-4xl mb-2">⌨️</div>
+                                                <p>Run a query to see results here</p>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                                {activeTab === 'results' && results && (
+                                    <div className="bg-white border-t border-slate-200 px-4 py-2 flex items-center justify-between flex-shrink-0">
+                                        <div className="text-xs text-slate-500">
+                                            Showing {Math.min((page - 1) * rowsPerPage + 1, results.rows)} - {Math.min(page * rowsPerPage, results.rows)} of {results.rows} rows
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => setPage(p => Math.max(1, p - 1))}
+                                                disabled={page === 1}
+                                                className="px-2 py-1 text-xs border rounded hover:bg-slate-50 disabled:opacity-50"
+                                            >
+                                                Previous
+                                            </button>
+                                            <span className="text-xs py-1">Page {page} of {Math.ceil(results.rows / rowsPerPage)}</span>
+                                            <button
+                                                onClick={() => setPage(p => Math.min(Math.ceil(results.rows / rowsPerPage), p + 1))}
+                                                disabled={page >= Math.ceil(results.rows / rowsPerPage)}
+                                                className="px-2 py-1 text-xs border rounded hover:bg-slate-50 disabled:opacity-50"
+                                            >
+                                                Next
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        function EDAApp() {
+            const [stats, setStats] = useState(null);
+            const [comprehensive, setComprehensive] = useState(null);
+            const [view, setView] = useState('analyze'); // analyze, source_selection, connect, upload, query, report
+            const [dbCredentials, setDbCredentials] = useState(null);
+            const [dbSchemas, setDbSchemas] = useState([]);
+
+            const [selectedColumn, setSelectedColumn] = useState(null);
+            const [inspectingColumn, setInspectingColumn] = useState(null);
+            const [insights, setInsights] = useState([]);
+            const [loadingInsights, setLoadingInsights] = useState(false);
+
+            useEffect(() => {
+                fetchStats();
+            }, []);
+
+            const fetchStats = async () => {
+                try {
+                    const res = await fetch('/eda/api/data_stats');
+                    if (res.ok) {
+                        const data = await res.json();
+                        setStats(data);
+                        setComprehensive(data.comprehensive);
+                        setView('analyze');
+                        fetchInsights(); // Fetch insights after stats are loaded
+                    } else {
+                        // If no data is loaded (400), switch to source selection view
+                        setView('source_selection');
+                    }
+                } catch (e) {
+                    console.error("Failed to fetch stats", e);
+                    setView('source_selection');
+                }
+            };
+
+            const handleConnected = (credentials, schemas) => {
+                setDbCredentials(credentials);
+                setDbSchemas(schemas);
+                setView('query');
+            };
+
+            const handleAnalyze = () => {
+                fetchStats();
+            };
+
+            const handleGenerateReport = () => {
+                setView('report');
+            };
+
+            const fetchInsights = async () => {
+                setLoadingInsights(true);
+                try {
+                    const response = await fetch('/eda/api/insights');
+                    const data = await response.json();
+                    if (data.success) {
+                        setInsights(data.insights);
+                    }
+                } catch (error) {
+                    console.error('Error fetching insights:', error);
+                } finally {
+                    setLoadingInsights(false);
+                }
+            };
+
+
+
+            if (view === 'source_selection') {
+                return (
+                    <DataSourceSelector
+                        onSelectPostgres={() => setView('connect')}
+                        onSelectFileUpload={() => setView('upload')}
+                    />
+                );
+            }
+
+            if (view === 'upload') {
+                return <FileUploader onAnalyze={handleAnalyze} onBack={() => setView('source_selection')} />;
+            }
+
+            if (view === 'connect') {
+                return <DBConnector onConnected={handleConnected} />;
+            }
+
+            if (view === 'query') {
+                return (
+                    <div className="h-screen overflow-hidden">
+                        <QueryInterface credentials={dbCredentials} schemas={dbSchemas} onAnalyze={handleAnalyze} />
+                    </div>
+                );
+            }
+
+            if (view === 'report') {
+                return <ReportView stats={stats} comprehensive={comprehensive} insights={insights} onBack={() => setView('analyze')} />;
+            }
+
+            if (!stats) return <div className="text-center mt-20">Loading Analysis...</div>;
+
+            const overview = comprehensive?.overview || {};
+            const columns = comprehensive?.columns || {};
+
+            // Merge comprehensive column data with basic stats (which has histogram)
+            const activeColumnData = inspectingColumn ? {
+                ...columns[inspectingColumn],
+                ...stats.columns[inspectingColumn]
+            } : null;
+
+            return (
+                <div className="h-screen overflow-auto p-8 bg-[#fdfbf7] text-[#2d2a26] font-sans">
+                    <div className="max-w-7xl mx-auto relative">
+                        {/* Header */}
+                        <header className="flex justify-between items-end mb-12">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 rounded-xl overflow-hidden shadow-[4px_4px_0px_#2d2a26] border-2 border-[#2d2a26]">
+                                    <img src="/static/images/app_icon.png" alt="FlowMind" className="w-full h-full object-cover" />
+                                </div>
+                                <div>
+                                    <h1 className="text-5xl font-bold mb-1">Data Profiling</h1>
+                                    <p className="text-xl text-gray-600 font-medium">Exploration Session #{Math.floor(Math.random() * 100)}</p>
+                                </div>
+                            </div>
+                            <div className="flex gap-4">
+                                <button onClick={() => setView('connect')} className="px-6 py-3 rounded-xl font-bold border-2 border-gray-900 hover:bg-yellow-100 transition-colors">
+                                    + New Source
+                                </button>
+                                <button onClick={() => window.location.href = '/transformation'} className="px-6 py-3 rounded-xl font-bold bg-indigo-600 text-white border-2 border-gray-900 hover:bg-indigo-700 transition-colors shadow-[4px_4px_0px_rgba(0,0,0,0.2)]">
+                                    Start Transformation -&gt;
+                                </button>
+                            </div>
+                        </header>
+
+                        {/* Big Stats */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
+                            <div className="bg-blue-50 border-2 border-[#2d2a26] rounded-2xl p-8 shadow-[4px_4px_0px_#2d2a26] hover:-translate-y-0.5 hover:shadow-[6px_6px_0px_#2d2a26] transition-all">
+                                <div className="flex justify-between items-start mb-4">
+                                    <span className="text-4xl">📚</span>
+                                    <span className="px-3 py-1 rounded-full bg-white text-xs uppercase font-bold border-[1.5px] border-[#2d2a26]">Dataset Size</span>
+                                </div>
+                                <div className="text-5xl font-bold mb-2">{stats.shape.rows.toLocaleString()}</div>
+                                <div className="text-lg font-medium text-gray-600">Total Rows</div>
+                            </div>
+                            <div className="bg-green-50 border-2 border-[#2d2a26] rounded-2xl p-8 shadow-[4px_4px_0px_#2d2a26] hover:-translate-y-0.5 hover:shadow-[6px_6px_0px_#2d2a26] transition-all">
+                                <div className="flex justify-between items-start mb-4">
+                                    <span className="text-4xl">🧬</span>
+                                    <span className="px-3 py-1 rounded-full bg-white text-xs uppercase font-bold border-[1.5px] border-[#2d2a26]">Structure</span>
+                                </div>
+                                <div className="text-5xl font-bold mb-2">{stats.shape.columns}</div>
+                                <div className="text-lg font-medium text-gray-600">Columns</div>
+                            </div>
+                            <div className="bg-pink-50 border-2 border-[#2d2a26] rounded-2xl p-8 shadow-[4px_4px_0px_#2d2a26] hover:-translate-y-0.5 hover:shadow-[6px_6px_0px_#2d2a26] transition-all">
+                                <div className="flex justify-between items-start mb-4">
+                                    <span className="text-4xl">✨</span>
+                                    <span className="px-3 py-1 rounded-full bg-white text-xs uppercase font-bold border-[1.5px] border-[#2d2a26]">Quality</span>
+                                </div>
+                                <div className="text-5xl font-bold mb-2">
+                                    {(() => {
+                                        const totalCells = stats.shape.rows * stats.shape.columns;
+                                        const missingCells = overview.missing_cells || 0;
+                                        const duplicateRows = overview.duplicate_rows || 0;
+
+                                        // Penalize for missing data and duplicates
+                                        const missingPenalty = (missingCells / totalCells) * 100;
+                                        const duplicatePenalty = (duplicateRows / stats.shape.rows) * 100;
+
+                                        // Calculate score (max 100, min 0)
+                                        const score = Math.max(0, 100 - (missingPenalty + duplicatePenalty));
+                                        return Math.round(score) + '%';
+                                    })()}
+                                </div>
+                                <div className="flex items-center gap-2 text-lg font-medium text-gray-600 relative group">
+                                    Data Health
+                                    <div className="cursor-help text-gray-400 hover:text-gray-600 transition-colors">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <circle cx="12" cy="12" r="10"></circle>
+                                            <line x1="12" y1="16" x2="12" y2="12"></line>
+                                            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                                        </svg>
+                                    </div>
+                                    {/* Tooltip */}
+                                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-xl">
+                                        <p className="font-bold mb-1">Health Score Formula:</p>
+                                        <p>100 - (% Missing Cells + % Duplicate Rows)</p>
+                                        <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Main Workspace */}
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+                            {/* Column Deck */}
+                            <div className="lg:col-span-2 space-y-6">
+                                <h2 className="text-2xl font-bold border-b-4 border-yellow-300 inline-block pr-4">Column Deck</h2>
+
+                                {Object.values(columns).map((col, idx) => (
+                                    <div key={idx} onClick={() => setInspectingColumn(col.name)} className={`bg-white border-2 border-[#2d2a26] rounded-2xl p-6 flex items-center justify-between group cursor-pointer shadow-[4px_4px_0px_#2d2a26] hover:-translate-y-0.5 hover:shadow-[6px_6px_0px_#2d2a26] transition-all ${idx % 3 === 0 ? 'hover:bg-blue-50' : idx % 3 === 1 ? 'hover:bg-purple-50' : 'hover:bg-yellow-50'}`}>
+                                        <div className="flex items-center gap-6">
+                                            <div className={`w-12 h-12 rounded-xl border-2 flex items-center justify-center text-2xl ${idx % 3 === 0 ? 'bg-blue-100 border-blue-200' : idx % 3 === 1 ? 'bg-purple-100 border-purple-200' : 'bg-yellow-100 border-yellow-200'}`}>
+                                                {col.numeric ? '🔢' : col.datetime ? '📅' : '🏷️'}
+                                            </div>
+                                            <div>
+                                                <h3 className={`text-xl font-bold transition-colors ${idx % 3 === 0 ? 'group-hover:text-blue-600' : idx % 3 === 1 ? 'group-hover:text-purple-600' : 'group-hover:text-yellow-600'}`}>{col.name}</h3>
+                                                <div className="flex gap-2 mt-1">
+                                                    <span className="border-[1.5px] border-[#2d2a26] px-2 py-0.5 rounded text-xs font-bold bg-gray-100">{col.dtype}</span>
+                                                    {!col.numeric && (
+                                                        <span className="border-[1.5px] border-[#2d2a26] px-2 py-0.5 rounded text-xs font-bold bg-white">{col.unique_count} Unique</span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <button className="bg-[#2d2a26] text-white border-2 border-[#2d2a26] px-4 py-2 rounded-lg text-sm font-bold opacity-0 group-hover:opacity-100 transition-opacity shadow-[2px_2px_0px_rgba(0,0,0,0.2)] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none">Inspect</button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* Intelligence & Actions Panel */}
+                            <div className="space-y-8">
+
+                                {/* Quick Insights */}
+                                <div className="space-y-4">
+                                    <h2 className="text-2xl font-bold border-b-4 border-purple-300 inline-block pr-4">Quick Insights</h2>
+                                    <div className="bg-purple-50 border-2 border-[#2d2a26] rounded-2xl p-6 shadow-[4px_4px_0px_#2d2a26]">
+                                        <div className="flex items-center gap-2 mb-4 text-purple-700 font-bold">
+                                            <span className="text-xl">🤖</span> AI Analysis
+                                            {loadingInsights && <span className="text-xs text-gray-500 font-normal ml-2 animate-pulse">Generating...</span>}
+                                        </div>
+                                        <ul className="space-y-3">
+                                            {insights.length > 0 ? insights.map((insight, i) => (
+                                                <li key={i} className="flex gap-3 text-sm leading-relaxed">
+                                                    <span className="text-purple-500 font-bold">•</span>
+                                                    <span dangerouslySetInnerHTML={{ __html: insight.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') }}></span>
+                                                </li>
+                                            )) : (
+                                                !loadingInsights && <li className="text-sm text-gray-500 italic">No insights generated yet.</li>
+                                            )}
+                                        </ul>
+                                    </div>
+                                </div>
+
+                                {/* Alerts Section */}
+                                {comprehensive?.alerts && comprehensive.alerts.length > 0 && (
+                                    <div className="space-y-4">
+                                        <h2 className="text-2xl font-bold border-b-4 border-red-300 inline-block pr-4">Data Alerts</h2>
+                                        <div className="space-y-3">
+                                            {comprehensive.alerts.map((alert, i) => (
+                                                <div key={i} className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-lg shadow-sm">
+                                                    <div className="flex items-start gap-3">
+                                                        <span className="text-2xl">⚠️</span>
+                                                        <div>
+                                                            <p className="font-bold text-red-800">{alert.column}</p>
+                                                            <p className="text-sm text-red-700">{alert.message}</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Quick Actions */}
+                                <div className="space-y-4">
+                                    <h2 className="text-2xl font-bold border-b-4 border-pink-300 inline-block pr-4">Actions</h2>
+                                    <div className="bg-[#2d2a26] text-white border-2 border-[#2d2a26] rounded-2xl p-6 shadow-[4px_4px_0px_#2d2a26]">
+                                        <div className="space-y-3">
+                                            <button onClick={handleGenerateReport} className="w-full py-3 px-4 rounded-xl bg-gray-800 hover:bg-gray-700 border border-gray-700 flex items-center gap-3 transition-colors group">
+                                                <span className="group-hover:scale-110 transition-transform">📊</span> Generate Report
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Drawer Overlay */}
+                    {inspectingColumn && (
+                        <div className="fixed inset-0 bg-[#2d2a26]/50 backdrop-blur-sm z-40" onClick={() => setInspectingColumn(null)}></div>
+                    )}
+
+                    {/* Interactive Inspect Drawer */}
+                    <div className={`fixed top-0 right-0 h-full w-[480px] bg-white border-l-4 border-[#2d2a26] shadow-2xl z-50 p-8 overflow-y-auto transform transition-transform duration-300 ease-in-out ${inspectingColumn ? 'translate-x-0' : 'translate-x-full'}`}>
+                        {activeColumnData && (
+                            <>
+                                <div className="flex justify-between items-center mb-8">
+                                    <h2 className="text-3xl font-bold">{activeColumnData.name}</h2>
+                                    <button onClick={() => setInspectingColumn(null)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                                    </button>
+                                </div>
+
+                                <div className="space-y-8">
+                                    {/* Stats Grid */}
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="p-4 bg-gray-50 rounded-xl border-2 border-gray-100">
+                                            <p className="text-sm text-gray-500 uppercase font-bold mb-1">Type</p>
+                                            <p className="text-xl font-bold text-blue-600">{activeColumnData.dtype}</p>
+                                        </div>
+
+                                        {!activeColumnData.numeric && (
+                                            <>
+                                                <div className="p-4 bg-gray-50 rounded-xl border-2 border-gray-100">
+                                                    <p className="text-sm text-gray-500 uppercase font-bold mb-1">Unique</p>
+                                                    <p className="text-xl font-bold text-green-600">{activeColumnData.unique_count}</p>
+                                                </div>
+                                                <div className="p-4 bg-gray-50 rounded-xl border-2 border-gray-100">
+                                                    <p className="text-sm text-gray-500 uppercase font-bold mb-1">Cardinality</p>
+                                                    <p className="text-xl font-bold text-purple-600">{activeColumnData.cardinality}</p>
+                                                </div>
+                                            </>
+                                        )}
+
+                                        <div className="p-4 bg-gray-50 rounded-xl border-2 border-gray-100">
+                                            <p className="text-sm text-gray-500 uppercase font-bold mb-1">Missing</p>
+                                            <p className="text-xl font-bold text-gray-800">{activeColumnData.missing_pct}%</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Histogram for Numeric */}
+                                    {activeColumnData.numeric && activeColumnData.histogram && (
+                                        <div className="bg-white border-2 border-[#2d2a26] rounded-2xl p-6 shadow-[4px_4px_0px_#2d2a26]">
+                                            <h3 className="text-lg font-bold mb-4">Distribution</h3>
+                                            <div className="h-40 flex items-end gap-1">
+                                                {activeColumnData.histogram.counts.map((count, i) => {
+                                                    const maxCount = Math.max(...activeColumnData.histogram.counts);
+                                                    const heightPct = maxCount > 0 ? (count / maxCount) * 100 : 0;
+                                                    return (
+                                                        <div key={i} className="flex-1 bg-indigo-500 hover:bg-indigo-600 transition-colors rounded-t-sm relative group" style={{ height: `${heightPct}%` }}>
+                                                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 bg-black text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
+                                                                {activeColumnData.histogram.bins[i].toFixed(1)} - {activeColumnData.histogram.bins[i + 1].toFixed(1)}: {count}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                            <div className="flex justify-between mt-2 text-xs text-gray-500 font-medium">
+                                                <span>{activeColumnData.histogram.bins[0].toFixed(1)}</span>
+                                                <span>{activeColumnData.histogram.bins[activeColumnData.histogram.bins.length - 1].toFixed(1)}</span>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Top Values (Categorical) */}
+                                    {activeColumnData.categorical && (
+                                        <div className="bg-white border-2 border-[#2d2a26] rounded-2xl p-6 shadow-[4px_4px_0px_#2d2a26]">
+                                            <h3 className="text-lg font-bold mb-4">Top Values</h3>
+                                            <div className="space-y-3">
+                                                {Object.entries(activeColumnData.categorical.top_5).map(([val, count], i) => (
+                                                    <div key={i} className="flex justify-between items-center">
+                                                        <span className="font-medium truncate max-w-[150px]">{val}</span>
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-24 h-2 bg-gray-100 rounded-full overflow-hidden">
+                                                                <div className="h-full bg-blue-500" style={{ width: `${activeColumnData.categorical.top_5_pct[val]}%` }}></div>
+                                                            </div>
+                                                            <span className="text-sm text-gray-500">{count}</span>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Numeric Stats */}
+                                    {activeColumnData.numeric && (
+                                        <div className="bg-yellow-50 border-2 border-[#2d2a26] rounded-2xl p-6 shadow-[4px_4px_0px_#2d2a26]">
+                                            <h3 className="text-lg font-bold mb-4">Statistics</h3>
+                                            <div className="space-y-2 text-sm">
+                                                <div className="grid grid-cols-2 gap-4 mb-4">
+                                                    <div>
+                                                        <p className="text-gray-500 text-xs uppercase font-bold">Min</p>
+                                                        <p className="font-mono font-bold">{activeColumnData.numeric.min?.toFixed(2)}</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-gray-500 text-xs uppercase font-bold">Max</p>
+                                                        <p className="font-mono font-bold">{activeColumnData.numeric.max?.toFixed(2)}</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-gray-500 text-xs uppercase font-bold">Mean</p>
+                                                        <p className="font-mono font-bold">{activeColumnData.numeric.mean?.toFixed(2)}</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-gray-500 text-xs uppercase font-bold">Median</p>
+                                                        <p className="font-mono font-bold">{activeColumnData.numeric.median?.toFixed(2)}</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-gray-500 text-xs uppercase font-bold">Std Dev</p>
+                                                        <p className="font-mono font-bold">{activeColumnData.numeric.std?.toFixed(2)}</p>
+                                                    </div>
+                                                </div>
+
+                                                <div className="border-t border-yellow-200 pt-2">
+                                                    <p className="text-xs font-bold text-gray-500 mb-2 uppercase">Percentiles</p>
+                                                    <div className="flex justify-between text-xs">
+                                                        <div className="text-center">
+                                                            <p className="text-gray-500">P50</p>
+                                                            <p className="font-mono font-bold">{activeColumnData.numeric.percentiles?.p50?.toFixed(2)}</p>
+                                                        </div>
+                                                        <div className="text-center">
+                                                            <p className="text-gray-500">P75</p>
+                                                            <p className="font-mono font-bold">{activeColumnData.numeric.percentiles?.p75?.toFixed(2)}</p>
+                                                        </div>
+                                                        <div className="text-center">
+                                                            <p className="text-gray-500">P95</p>
+                                                            <p className="font-mono font-bold">{activeColumnData.numeric.percentiles?.p95?.toFixed(2)}</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="border-t border-yellow-200 pt-2 mt-2">
+                                                    <p className="text-xs font-bold text-gray-500 mb-2 uppercase">Sanity Checks</p>
+                                                    <div className="flex justify-between text-xs">
+                                                        <span>Zero Values:</span>
+                                                        <span className={activeColumnData.numeric.zeros_pct > 0 ? "text-orange-600 font-bold" : "text-green-600 font-bold"}>
+                                                            {activeColumnData.numeric.zeros_pct}%
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex justify-between text-xs">
+                                                        <span>Negative Values:</span>
+                                                        <span className={activeColumnData.numeric.negative_pct > 0 ? "text-red-600 font-bold" : "text-green-600 font-bold"}>
+                                                            {activeColumnData.numeric.negative_pct}%
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Datetime Stats */}
+                                    {activeColumnData.datetime && (
+                                        <div className="bg-blue-50 border-2 border-[#2d2a26] rounded-2xl p-6 shadow-[4px_4px_0px_#2d2a26]">
+                                            <h3 className="text-lg font-bold mb-4">Time Analysis</h3>
+                                            <div className="space-y-4 text-sm">
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <p className="text-gray-500 text-xs uppercase font-bold">Start</p>
+                                                        <p className="font-mono font-bold text-xs">{activeColumnData.datetime.min_date}</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-gray-500 text-xs uppercase font-bold">End</p>
+                                                        <p className="font-mono font-bold text-xs">{activeColumnData.datetime.max_date}</p>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex justify-between border-b border-blue-200 pb-2">
+                                                    <span className="text-gray-600">Granularity</span>
+                                                    <span className="font-bold">{activeColumnData.datetime.frequency}</span>
+                                                </div>
+                                                <div className="flex justify-between border-b border-blue-200 pb-2">
+                                                    <span className="text-gray-600">Missing Dates</span>
+                                                    <span className="font-bold">{activeColumnData.missing_pct}%</span>
+                                                </div>
+
+                                                {activeColumnData.datetime.peak_activity && (
+                                                    <div className="pt-2">
+                                                        <p className="text-xs font-bold text-gray-500 mb-2 uppercase">Activity Extremes</p>
+                                                        <div className="flex justify-between text-xs mb-1">
+                                                            <span className="text-green-700 font-bold">Peak:</span>
+                                                            <span>{activeColumnData.datetime.peak_activity.date} ({activeColumnData.datetime.peak_activity.count})</span>
+                                                        </div>
+                                                        <div className="flex justify-between text-xs">
+                                                            <span className="text-red-700 font-bold">Low:</span>
+                                                            <span>{activeColumnData.datetime.low_activity.date} ({activeColumnData.datetime.low_activity.count})</span>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<EDAApp />);
+        {% endverbatim %}
+    </script>
+</body>
+
+</html>

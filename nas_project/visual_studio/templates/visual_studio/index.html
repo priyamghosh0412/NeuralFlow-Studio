@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visual Intelligence Studio</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.development.js"></script>
+    <script crossorigin
+        src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.development.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lucide/0.263.1/lucide.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+        }
+
+        .draggable-item {
+            cursor: grab;
+        }
+
+        .draggable-item:active {
+            cursor: grabbing;
+        }
+
+        .drop-zone {
+            transition: all 0.2s ease;
+        }
+
+        .drop-zone.drag-over {
+            background-color: #e0e7ff;
+            border-color: #4f46e5;
+        }
+    </style>
+</head>
+
+<body class="h-screen overflow-hidden flex flex-col">
+    <div id="root" class="h-full"></div>
+
+    <script type="text/babel">
+        {% verbatim %}
+        const { useState, useEffect, useRef } = React;
+
+        // --- Icons ---
+        const Icon = ({ name, size = 18, className = "" }) => <span className={`text-xs ${className}`}>{name}</span>;
+
+        const VizIcon = ({ type }) => {
+            const icons = {
+                bar: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 20h16M6 20v-6m4 6v-10m4 10v-8m4 8v-12" /></svg>,
+                line: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 20h16M4 14l4-4 4 4 8-8" /></svg>,
+                scatter: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 8h.01M16 8h.01M8 16h.01M16 16h.01M12 12h.01M6 18h.01M18 6h.01M6 6h.01M18 18h.01" /></svg>,
+                histogram: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 20h16M5 20v-8h3v8m1-12h3v12m1-10h3v10m1-6h3v6" /></svg>,
+                box: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m-4-12h8m-8 8h8m-4-10v4m0 4v2m-2-6h4v4h-4z" /></svg>,
+                pie: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" /></svg>,
+            };
+            return icons[type] || <span className="text-xs">{type}</span>;
+        };
+
+        const VizCard = ({ viz, index, onUpdate, onRemove }) => {
+            const [plotData, setPlotData] = useState(null);
+            const [loading, setLoading] = useState(false);
+            const [summary, setSummary] = useState(viz.summary || "");
+            const [generatingSummary, setGeneratingSummary] = useState(false);
+            const canvasRef = useRef(null);
+
+            useEffect(() => {
+                if (viz.config.x) {
+                    fetchData();
+                }
+            }, [viz.config]);
+
+            // Auto-generate summary when data creates a new plot pattern
+            useEffect(() => {
+                if (plotData && !summary && viz.config.x) {
+                    generateSummary();
+                }
+            }, [plotData]);
+
+            // Render Plotly
+            useEffect(() => {
+                if (plotData && canvasRef.current) {
+                    let traces = [];
+                    const colorCol = viz.config.color;
+                    const xCol = viz.config.x;
+                    const yCol = viz.config.y;
+
+                    // Helper to determine if column is categorical (string)
+                    const isCategorical = (col) => plotData.length > 0 && isNaN(plotData[0][col]);
+
+                    // Pie Chart Exception
+                    if (viz.type === 'pie') {
+                        const trace = {
+                            type: 'pie',
+                            labels: plotData.map(d => d[xCol]),
+                            values: yCol ? plotData.map(d => d[yCol]) : plotData.map(() => 1),
+                        };
+                        traces.push(trace);
+                    }
+                    // Grouping for Color (Categorical)
+                    else if (colorCol && isCategorical(colorCol)) {
+                        // Get unique groups
+                        const groups = [...new Set(plotData.map(d => d[colorCol]))];
+
+                        groups.forEach(group => {
+                            const groupData = plotData.filter(d => d[colorCol] === group);
+                            const trace = {
+                                type: viz.type === 'line' ? 'scatter' : viz.type,
+                                mode: viz.type === 'line' ? 'lines+markers' : 'markers',
+                                name: group,
+                                x: groupData.map(d => d[xCol]),
+                                y: yCol ? groupData.map(d => d[yCol]) : null,
+                            };
+
+                            if (viz.type === 'bar') trace.type = 'bar';
+                            if (viz.type === 'histogram') trace.type = 'histogram';
+                            if (viz.type === 'box') trace.type = 'box';
+
+                            traces.push(trace);
+                        });
+                    }
+                    // Single Trace (No Color or Numerical Color)
+                    else {
+                        const trace = {
+                            type: viz.type === 'line' ? 'scatter' : viz.type,
+                            mode: viz.type === 'line' ? 'lines+markers' : 'markers',
+                            x: plotData.map(d => d[xCol]),
+                            y: yCol ? plotData.map(d => d[yCol]) : null,
+                        };
+
+                        if (viz.type === 'bar') trace.type = 'bar';
+                        if (viz.type === 'histogram') trace.type = 'histogram';
+                        if (viz.type === 'box') trace.type = 'box';
+
+                        // Continuous Color Scale
+                        if (colorCol) {
+                            trace.marker = {
+                                color: plotData.map(d => d[colorCol]),
+                                showscale: true,
+                                colorscale: 'Viridis'
+                            };
+                        }
+                        traces.push(trace);
+                    }
+
+                    const layout = {
+                        title: { text: viz.name, font: { size: 14 } },
+                        autosize: true,
+                        margin: { t: 40, b: 80, l: 50, r: 20 },
+                        paper_bgcolor: 'rgba(0,0,0,0)',
+                        plot_bgcolor: 'rgba(0,0,0,0)',
+                        showlegend: !!(colorCol && isCategorical(colorCol)),
+                        legend: { orientation: "h", y: -0.2 }
+                    };
+
+                    Plotly.newPlot(canvasRef.current, traces, layout, { responsive: true, displayModeBar: false });
+                }
+            }, [plotData, viz.type]);
+
+            const fetchData = async () => {
+                setLoading(true);
+                const reqCols = new Set();
+                ['x', 'y', 'color', 'size'].forEach(k => { if (viz.config[k]) reqCols.add(viz.config[k]) });
+
+                try {
+                    const res = await fetch('/visual-studio/api/get_plot_data', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ columns: Array.from(reqCols) })
+                    });
+                    const data = await res.json();
+                    if (data.data) setPlotData(data.data);
+                } catch (e) { console.error(e); }
+                finally { setLoading(false); }
+            };
+
+            const generateSummary = () => {
+                setGeneratingSummary(true);
+                fetch('/visual-studio/api/generate_summary', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ config: { ...viz.config, type: viz.type } })
+                })
+                    .then(r => r.json())
+                    .then(d => {
+                        setSummary(d.summary);
+                        onUpdate(index, { ...viz, summary: d.summary });
+                    })
+                    .finally(() => setGeneratingSummary(false));
+            };
+
+            const handleDrop = (e, zone) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const type = e.dataTransfer.getData('type');
+                if (type === 'column') {
+                    const col = JSON.parse(e.dataTransfer.getData('payload'));
+                    onUpdate(index, {
+                        ...viz,
+                        config: { ...viz.config, [zone]: col.name }
+                    });
+                }
+            };
+
+            const handleRemoveCol = (zone) => {
+                const newConfig = { ...viz.config };
+                delete newConfig[zone];
+                onUpdate(index, { ...viz, config: newConfig });
+                // Reset plot if essential axes removed
+                if (zone === 'x') setPlotData(null);
+            };
+
+            return (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col h-[520px] overflow-hidden relative group">
+                    {/* Header */}
+                    <div className="px-4 py-2 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                        <div className="flex items-center gap-2">
+                            <span className="text-gray-500"><VizIcon type={viz.id} /></span>
+                            <span className="font-semibold text-sm text-gray-700">{viz.name}</span>
+                        </div>
+                        <div className="flex gap-2">
+                            <button onClick={() => onRemove(index)} className="text-gray-400 hover:text-red-500 p-1">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Drop Zones */}
+                    <div className="grid grid-cols-4 gap-2 p-2 bg-gray-50/50">
+                        {viz.zones.map(zone => (
+                            <div
+                                key={zone}
+                                onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('bg-indigo-50', 'border-indigo-300'); }}
+                                onDragLeave={(e) => { e.currentTarget.classList.remove('bg-indigo-50', 'border-indigo-300'); }}
+                                onDrop={(e) => { e.currentTarget.classList.remove('bg-indigo-50', 'border-indigo-300'); handleDrop(e, zone); }}
+                                className="border border-dashed border-gray-300 rounded px-2 py-1 flex items-center justify-between text-xs min-h-[30px]"
+                            >
+                                <span className="uppercase text-[10px] text-gray-400 font-bold mr-1">{zone}:</span>
+                                {viz.config[zone] ? (
+                                    <div className="flex items-center gap-1 bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded max-w-[80px]">
+                                        <span className="truncate">{viz.config[zone]}</span>
+                                        <button onClick={() => handleRemoveCol(zone)} className="hover:text-red-600">&times;</button>
+                                    </div>
+                                ) : (
+                                    <span className="text-gray-300">Drop</span>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Chart Area */}
+                    <div className="flex-1 relative min-h-0">
+                        <div id={`viz-${viz.id}`} ref={canvasRef} className="w-full h-full"></div>
+                        {!plotData && (
+                            <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-xs pointer-events-none">
+                                Drag columns to axes to visualize
+                            </div>
+                        )}
+                        {loading && (
+                            <div className="absolute inset-0 bg-white/50 flex items-center justify-center z-10">
+                                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600"></div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Editable Insight Footer */}
+                    <div className="p-3 bg-gray-50 border-t border-gray-200">
+                        <div className="flex items-start gap-2 h-16 overflow-y-auto">
+                            <div className={`mt-1 flex-shrink-0 ${generatingSummary ? 'animate-pulse' : ''}`}>
+                                <svg className="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                            </div>
+                            <div
+                                contentEditable
+                                suppressContentEditableWarning
+                                className="flex-1 text-xs text-gray-600 focus:outline-none focus:bg-white p-1 rounded transition-colors leading-relaxed"
+                                onBlur={(e) => {
+                                    setSummary(e.target.innerText);
+                                    onUpdate(index, { ...viz, summary: e.target.innerText });
+                                }}
+                            >
+                                {summary || (generatingSummary ? "Generating insight..." : "AI insights will appear here once you visualize data.")}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        function App() {
+            const [columns, setColumns] = useState([]);
+            const [vizTypes, setVizTypes] = useState([]);
+            const [visualizations, setVisualizations] = useState([]);
+            const [isExporting, setIsExporting] = useState(false);
+
+            useEffect(() => {
+                fetch('/visual-studio/api/columns').then(r => r.json()).then(d => d.columns && setColumns(d.columns));
+                fetch('/visual-studio/api/viz_types').then(r => r.json()).then(d => d.viz_types && setVizTypes(d.viz_types));
+            }, []);
+
+            const handleDragStart = (e, type, payload) => {
+                e.dataTransfer.setData('type', type);
+                e.dataTransfer.setData('payload', JSON.stringify(payload));
+            };
+
+            const handleCanvasDrop = (e) => {
+                e.preventDefault();
+                const type = e.dataTransfer.getData('type');
+                if (type === 'viz_type') {
+                    const viz = JSON.parse(e.dataTransfer.getData('payload'));
+                    setVisualizations(prev => [...prev, { ...viz, config: {}, type: viz.id, id: Date.now() }]); // Unique ID for key
+                }
+            };
+
+            const updateViz = (index, newViz) => {
+                setVisualizations(prev => {
+                    const next = [...prev];
+                    next[index] = newViz;
+                    return next;
+                });
+            };
+
+            const removeViz = (index) => {
+                setVisualizations(prev => prev.filter((_, i) => i !== index));
+            };
+
+            const handleGlobalDownload = async () => {
+                if (visualizations.length === 0) return;
+                setIsExporting(true);
+
+                try {
+                    // Generate report logic
+                    const images = [];
+                    for (const viz of visualizations) {
+                        const el = document.getElementById(`viz-${viz.id}`);
+                        if (el) {
+                            try {
+                                const url = await Plotly.toImage(el, { format: 'png', height: 400, width: 600 });
+                                images.push({ name: viz.name, url, summary: viz.summary || "No insight generated." });
+                            } catch (e) {
+                                console.error("Error capturing plot", e);
+                            }
+                        }
+                    }
+
+                    const htmlContent = `
+                        <html>
+                        <head>
+                            <title>Visual Intelligence Report</title>
+                            <script src="https://cdn.tailwindcss.com"><\/script>
+                        </head>
+                        <body class="bg-gray-100 p-8 font-sans">
+                            <div class="max-w-4xl mx-auto">
+                                <header class="mb-8 text-center">
+                                    <h1 class="text-3xl font-bold text-gray-800">Visual Intelligence Analysis</h1>
+                                    <p class="text-gray-500 mt-2">Generated on ${new Date().toLocaleDateString()}</p>
+                                </header>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                    ${images.map(img => `
+                                        <div class="bg-white rounded-xl shadow-lg overflow-hidden border border-gray-200">
+                                            <div class="p-4 border-b border-gray-100 bg-gray-50">
+                                                <h2 class="font-bold text-gray-700">${img.name}</h2>
+                                            </div>
+                                            <div class="p-4">
+                                                <img src="${img.url}" class="w-full h-auto rounded-lg border border-gray-100 mb-4" />
+                                                <div class="bg-indigo-50 p-4 rounded-lg border border-indigo-100">
+                                                    <div class="flex gap-2">
+                                                        <span class="text-indigo-600 font-bold">AI Insight:</span>
+                                                        <p class="text-sm text-gray-700 leading-relaxed">${img.summary}</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        </body>
+                        </html>
+                    `;
+
+                    const blob = new Blob([htmlContent], { type: 'text/html' });
+                    const link = document.createElement('a');
+                    link.href = URL.createObjectURL(blob);
+                    link.download = `Analysis_Report_${new Date().toISOString().slice(0, 10)}.html`;
+                    link.click();
+
+                } catch (e) {
+                    console.error("Export failed", e);
+                } finally {
+                    setIsExporting(false);
+                }
+            };
+
+            return (
+                <div className="flex h-full">
+                    {/* Left Sidebar */}
+                    <div className="w-64 bg-white border-r border-gray-200 flex flex-col">
+                        <div className="p-4 border-b border-gray-100">
+                            <h2 className="font-bold text-gray-800">Fields</h2>
+                            <p className="text-xs text-gray-400">Drag to drop zones</p>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-2 space-y-2">
+                            {columns.map(col => (
+                                <div key={col.name} draggable onDragStart={(e) => handleDragStart(e, 'column', col)}
+                                    className="p-2 bg-gray-50 rounded border border-gray-100 hover:bg-indigo-50 hover:border-indigo-200
+                cursor-grab flex items-center justify-between"
+                                >
+                                    <span className="text-sm text-gray-700 font-medium truncate" title={col.name}>{col.name}</span>
+                                    <span className="text-[10px] text-gray-400 uppercase">{col.type}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Center Canvas */}
+                    <div className="flex-1 bg-gray-50 flex flex-col relative">
+                        <header className="h-14 bg-white border-b border-gray-200 flex items-center px-6 justify-between">
+                            <h1 className="font-bold text-gray-800">Visual Intelligence Studio</h1>
+                            <div className="flex items-center gap-3">
+                                <a href="/eda" className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Back</a>
+                                <button onClick={handleGlobalDownload} disabled={visualizations.length === 0 || isExporting}
+                                    className={`px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 shadow-sm flex items-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed ${visualizations.length === 0 ? 'bg-gray-300' : ''}`}>
+                                    {isExporting ? <span className="animate-spin">⟳</span> : <svg className="w-4 h-4" fill="none"
+                                        stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                                            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                    </svg>}
+                                    Download Report
+                                </button>
+                            </div>
+                        </header>
+
+                        <div className="flex-1 p-6 overflow-y-auto" onDragOver={(e) => e.preventDefault()}
+                            onDrop={handleCanvasDrop}
+                        >
+                            {visualizations.length === 0 ? (
+                                <div
+                                    className="h-full flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl m-4">
+                                    <p className="text-gray-400 font-medium">Drag a visualization type here to start</p>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                                    {visualizations.map((viz, idx) => (
+                                        <VizCard key={viz.id} viz={viz} index={idx} onUpdate={updateViz} onRemove={removeViz} />
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Right Sidebar */}
+                    <div className="w-20 bg-white border-l border-gray-200 flex flex-col items-center py-4 space-y-4 overflow-visible">
+                        {vizTypes.map(viz => (
+                            <div key={viz.id} draggable onDragStart={(e) => handleDragStart(e, 'viz_type', viz)}
+                                className="w-12 h-12 rounded-xl bg-gray-50 border border-gray-200 hover:bg-indigo-50 hover:border-indigo-500
+            hover:shadow-md cursor-grab flex items-center justify-center transition-all group relative"
+                            >
+                                <div className="text-gray-500 group-hover:text-indigo-600">
+                                    <VizIcon type={viz.id} />
+                                </div>
+                                <div
+                                    className="absolute right-full mr-2 px-2 py-1 bg-gray-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50">
+                                    {viz.name}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(
+            <App />);
+        {% endverbatim %}
+    </script>
+</body>
+
+</html>

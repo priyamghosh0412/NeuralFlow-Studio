@@ -1,0 +1,80 @@
+Excited to share something I've been building — FlowMind
+
+FlowMind is an AI-powered, end-to-end Data Science and Engineering platform that I've been developing to simplify the entire data lifecycle — from raw data ingestion to neural architecture search — all within a single unified interface. No more jumping between 10 different tools. One platform. One flow.
+
+
+THE OBJECTIVE BEHIND FLOWMIND
+-----------------------------
+
+As data practitioners, we constantly juggle between multiple tools — one for EDA, another for transformation, a separate notebook for visualization, yet another for model building, and something else entirely for LLM workflows. FlowMind was born out of the frustration of this fragmented workflow. The goal is to build a platform where you can:
+
+- Connect to your data (PostgreSQL or CSV/XLSX upload)
+- Profile and explore it deeply with AI-generated insights
+- Transform and clean it using both a pre-built catalog and natural language AI commands
+- Visualize patterns with interactive drag-and-drop charting
+- Automatically search for the best neural network architecture using Reinforcement Learning
+- Orchestrate autonomous LLM agents with a visual node-based flow builder
+
+All of this — powered locally using Ollama (no cloud API keys needed), built on Django 5, React, TailwindCSS, LangChain, Pandas, Scikit-learn, and TensorFlow.
+
+
+FEATURES AVAILABLE RIGHT NOW
+-----------------------------
+
+1. Neural Architect (EDA + NAS Pipeline)
+   - Deep data profiling with automatic statistics for every column (missing values, distributions, skewness, kurtosis, outlier percentages, cardinality, and more)
+   - AI-generated data quality insights
+   - Built-in SQL editor for querying connected PostgreSQL databases
+   - Full transformation pipeline with 30+ pre-built operations
+   - AI chat assistant for natural language transformations (powered by Ollama)
+   - Automated Neural Architecture Search using a custom RL-based framework
+   - Downloadable reports and best model export (.keras)
+
+2. Data Spectrum (Visual Intelligence Studio)
+   - Drag-and-drop visualization builder with Plotly.js
+   - Supports Bar, Line, Scatter, Histogram, Box, and Pie charts
+   - Drag columns onto X, Y, Color, and Size axes
+   - AI-generated insight summaries for every chart (via local LLM)
+   - One-click downloadable HTML analysis report with all visualizations and AI insights
+
+3. Agent Flow (Agent Studio)
+   - Visual node-based flow builder for LangChain workflows
+   - Drag-and-drop components: Chat Input, File Loader, Prompt Template, Local LLM, Chat Output
+   - Connect nodes with bezier curves, configure model parameters (temperature, max tokens, system prompt)
+   - Run the flow and interact via a dedicated chat interface
+   - Fully powered by local Ollama models — no external API dependency
+
+4. Industry Core (Coming Soon)
+   - Pre-trained models specialized for specific industry sectors
+   - Currently under construction
+
+
+IMPORTANT: CURRENT DEVELOPMENT STATUS
+---------------------------------------
+
+FlowMind is currently in active development. One key limitation right now is that the application does NOT store user-level session data persistently. All data (uploaded datasets, transformation states, EDA results, NAS search history) is held in server memory only for the duration of the running session. This means:
+
+- If you shut down the server or close the app, all your progress is lost
+- You cannot return to a previously worked-on project
+- There is no project save/load functionality yet
+
+This is a known limitation and is actively being worked on. Persistent user sessions, project management, and state recovery are high-priority items on the roadmap. The goal is to allow users to save, resume, and manage multiple projects seamlessly.
+
+
+YOUR INPUT MATTERS
+-------------------
+
+This is very much a work in progress, and I'd love to hear from the community:
+
+- If you have any pointers, suggestions, feature ideas, or feedback — please drop them in the comments below. Every perspective helps make this better.
+
+- If you're a developer and would like to contribute to FlowMind — whether it's frontend, backend, AI/ML, or DevOps — please ping me! The project is open source and contributions are very welcome.
+
+Let's build the future of AI-powered data workflows together.
+
+
+GitHub: https://github.com/priyamghosh0412/NeuralFlow-Studio
+Tech Stack: Django 5 | Python 3.12 | React | TailwindCSS | Pandas | Scikit-learn | TensorFlow | LangChain | Ollama | Plotly.js | PostgreSQL
+
+
+#FlowMind #DataScience #MachineLearning #AI #DeepLearning #NeuralArchitectureSearch #NAS #LLM #LangChain #Ollama #OpenSource #Django #Python #React #TailwindCSS #DataEngineering #EDA #DataTransformation #DataVisualization #AIAgents #AgentStudio #BuildInPublic #SideProject #TechCommunity #ArtificialIntelligence #MLOps #DataPipeline #NoCode #LowCode #NeuralNetworks #ReinforcementLearning #Plotly #TensorFlow #ScikitLearn #Pandas #FullStack #WebDevelopment #IndieHacker #DevCommunity
